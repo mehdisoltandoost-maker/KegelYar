@@ -19,6 +19,7 @@ public class MainActivity extends Activity {
     final int cream = Color.rgb(249,245,238);
     final int cardColor = Color.WHITE;
     final int plum = Color.rgb(91,48,72);
+    final int plumLight = Color.rgb(125,78,99);
     final int rose = Color.rgb(207,157,157);
     final int textColor = Color.rgb(65,53,57);
     final int muted = Color.rgb(135,119,119);
