@@ -33,6 +33,7 @@ public class MainActivity extends Activity {
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription, timerLabel;
     private CircleTimer circleTimer;
+    private ExerciseArt exerciseArt;
     private SharedPreferences prefs;
     private TextToSpeech tts;
 
