@@ -1,4 +1,3 @@
-
 package com.kegelyar.app;
 
 import android.app.Activity;
@@ -31,9 +30,8 @@ public class MainActivity extends Activity {
     private final int GREEN = Color.rgb(75, 210, 155);
 
     private LinearLayout root, content;
-    private TextView timerLabel;
+    private TextView stepTitle, stepDescription;
     private CircleTimer circleTimer;
-    private ExerciseArt exerciseArt;
     private SharedPreferences prefs;
     private TextToSpeech tts;
 
@@ -41,17 +39,18 @@ public class MainActivity extends Activity {
     private boolean soundEnabled = true;
     private boolean running = false;
     private boolean sessionFinished = false;
+    private boolean phaseIsContraction = true;
 
     private String gender = "";
     private int selectedWeek = 1;
     private int selectedDay = 1;
-    private int currentStep = 0;
-    private int currentPhase = 0;
+    private int currentStage = 0;
     private int secondsLeft = 0;
-    private int phaseDuration = 1;
+    private int stageDuration = 1;
+    private int repetition = 1;
 
     private final Handler handler = new Handler();
-    private final ArrayList<TrainingStage> steps = new ArrayList<>();
+    private final ArrayList<TrainingStage> stages = new ArrayList<>();
 
     private final String[] weekTitles = {
         "شروع آرام", "شناخت عضلات", "کنترل بهتر",
@@ -92,23 +91,43 @@ public class MainActivity extends Activity {
         "در پایان، عضلات را کاملاً آزاد کنید."
     };
 
+    /*
+     * هر TrainingStage یک اجازه شروع می‌گیرد.
+     * تکرارهای داخل مرحله به‌صورت خودکار اجرا می‌شوند.
+     * mode: صفر = زمان ثابت، یک = چرخه انقباض/رهاسازی.
+     */
     private static class TrainingStage {
         String title;
         String description;
-        int[] durations;
-        boolean[] contractions;
+        int mode;
+        int duration;
+        int repetitions;
+        int contractionSeconds;
+        int releaseSeconds;
+        boolean contractionArt;
 
-        TrainingStage(String t, String d, int[] times, boolean[] states) {
-            title = t;
-            description = d;
-            durations = times;
-            contractions = states;
+        TrainingStage(String title, String description, int duration,
+                      boolean contractionArt) {
+            this.title = title;
+            this.description = description;
+            this.mode = 0;
+            this.duration = duration;
+            this.repetitions = 1;
+            this.contractionSeconds = duration;
+            this.releaseSeconds = 0;
+            this.contractionArt = contractionArt;
         }
 
-        int getTotalDuration() {
-            int total = 0;
-            for (int s : durations) total += s;
-            return total;
+        TrainingStage(String title, String description, int repetitions,
+                      int contractionSeconds, int releaseSeconds) {
+            this.title = title;
+            this.description = description;
+            this.mode = 1;
+            this.duration = contractionSeconds;
+            this.repetitions = repetitions;
+            this.contractionSeconds = contractionSeconds;
+            this.releaseSeconds = releaseSeconds;
+            this.contractionArt = true;
         }
     }
 
@@ -120,7 +139,38 @@ public class MainActivity extends Activity {
             secondsLeft--;
 
             if (secondsLeft <= 0) {
-                advancePhase();
+                TrainingStage stage = stages.get(currentStage);
+
+                if (stage.mode == 1) {
+                    if (phaseIsContraction) {
+                        // پایان انقباض؛ ورود خودکار به رهاسازی
+                        phaseIsContraction = false;
+                        secondsLeft = stage.releaseSeconds;
+                        stageDuration = stage.releaseSeconds;
+                        speak("رها کنید");
+                        updateStageText();
+                        updateTimer();
+                        handler.postDelayed(this, 1000);
+                        return;
+                    } else {
+                        // پایان رهاسازی؛ تکرار بعدی بدون اجازه مجدد
+                        if (repetition < stage.repetitions) {
+                            repetition++;
+                            phaseIsContraction = true;
+                            secondsLeft = stage.contractionSeconds;
+                            stageDuration = stage.contractionSeconds;
+                            speak("انقباض ملایم");
+                            updateStageText();
+                            updateTimer();
+                            handler.postDelayed(this, 1000);
+                            return;
+                        }
+                    }
+                }
+
+                running = false;
+                handler.removeCallbacks(this);
+                completeStageAndWait();
                 return;
             }
 
@@ -316,6 +366,7 @@ public class MainActivity extends Activity {
         LinearLayout c = makeCard();
         addText(c, "به کگل‌یار خوش آمدید", 24, WHITE);
         addText(c, "گروه تمرینی خود را انتخاب کنید", 16, MUTED);
+
         addButton("♂ برنامه آقایان", () -> chooseGender("آقایان"));
         addButton("♀ برنامه بانوان", () -> chooseGender("بانوان"));
     }
@@ -432,81 +483,45 @@ public class MainActivity extends Activity {
         addButton("خانه", () -> showHome());
     }
 
-    private int[] makeDurations(int hold, int rest, int reps) {
-        int[] result = new int[reps * 2];
-        for (int i = 0; i < reps; i++) {
-            result[i * 2] = hold;
-            result[i * 2 + 1] = rest;
-        }
-        return result;
-    }
-
-    private boolean[] makeStates(int reps) {
-        boolean[] result = new boolean[reps * 2];
-        for (int i = 0; i < reps; i++) {
-            result[i * 2] = true;
-            result[i * 2 + 1] = false;
-        }
-        return result;
-    }
-
-    private void buildTrainingSteps() {
-        steps.clear();
+    private void buildTrainingStages() {
+        stages.clear();
 
         if (selectedDay == 7) {
-            steps.add(new TrainingStage(
-                    "تنفس آرام",
-                    "به‌آرامی نفس بکشید و عضلات را رها کنید.",
-                    new int[]{60}, new boolean[]{false}));
-
-            steps.add(new TrainingStage(
-                    "رهاسازی عضلات",
-                    "بدون انقباض، عضلات را کاملاً آزاد نگه دارید.",
-                    new int[]{60}, new boolean[]{false}));
-
-            steps.add(new TrainingStage(
-                    "آرام‌سازی پایانی",
-                    "چند نفس آرام بکشید و استراحت کنید.",
-                    new int[]{60}, new boolean[]{false}));
+            stages.add(new TrainingStage("تنفس آرام",
+                    "به‌آرامی نفس بکشید و عضلات را رها کنید.", 60, false));
+            stages.add(new TrainingStage("رهاسازی عضلات",
+                    "بدون انقباض، عضلات را کاملاً آزاد نگه دارید.", 60, false));
+            stages.add(new TrainingStage("آرام‌سازی پایانی",
+                    "چند نفس آرام بکشید و استراحت کنید.", 60, false));
             return;
         }
 
-        steps.add(new TrainingStage(
-                "آماده‌سازی و تنفس",
-                "در وضعیت راحت قرار بگیرید و آرام نفس بکشید.",
-                new int[]{45}, new boolean[]{false}));
+        stages.add(new TrainingStage("آماده‌سازی و تنفس",
+                "در وضعیت راحت قرار بگیرید و آرام نفس بکشید.", 45, false));
 
         int hold = Math.min(8, 3 + (selectedWeek - 1) / 2);
         int rest = hold + 2;
         int reps = selectedWeek < 4 ? 4 : 5;
 
-        steps.add(new TrainingStage(
-                "انقباض و رهاسازی",
-                "انقباض و رهاسازی را با ریتم راهنما انجام دهید. نفس را حبس نکنید.",
-                makeDurations(hold, rest, reps),
-                makeStates(reps)));
+        stages.add(new TrainingStage("انقباض و رهاسازی کنترل‌شده",
+                "با راهنمای صوتی، انقباض ملایم و سپس رهاسازی کامل را تکرار کنید. نفس را حبس نکنید.",
+                reps, hold, rest));
 
         int quick = selectedWeek < 4 ? 3 : 5;
+        stages.add(new TrainingStage("انقباض‌های کوتاه",
+                "انقباض‌های کوتاه و ملایم را با رهاسازی کامل بین آن‌ها انجام دهید.",
+                quick, 2, 4));
 
-        steps.add(new TrainingStage(
-                "تمرین سریع",
-                "انقباض‌های کوتاه و رهاسازی کامل را تا پایان راهنما تکرار کنید.",
-                makeDurations(2, 4, quick),
-                makeStates(quick)));
-
-        steps.add(new TrainingStage(
-                "آرام‌سازی پایانی",
-                "عضلات کف لگن را کاملاً آزاد کنید و آرام نفس بکشید.",
-                new int[]{45}, new boolean[]{false}));
+        stages.add(new TrainingStage("آرام‌سازی پایانی",
+                "عضلات کف لگن را کاملاً آزاد کنید و آرام نفس بکشید.", 45, false));
     }
 
     private void showTraining() {
         running = false;
         sessionFinished = false;
         handler.removeCallbacks(timerRunnable);
-        buildTrainingSteps();
-        currentStep = 0;
-        currentPhase = 0;
+        buildTrainingStages();
+        currentStage = 0;
         prepareStage();
     }
 
@@ -514,108 +529,162 @@ public class MainActivity extends Activity {
         running = false;
         handler.removeCallbacks(timerRunnable);
 
-        if (currentStep >= steps.size()) {
+        if (currentStage >= stages.size()) {
             finishTraining();
             return;
         }
 
-        TrainingStage s = steps.get(currentStep);
-        currentPhase = 0;
-        secondsLeft = s.durations[0];
-        phaseDuration = s.durations[0];
+        TrainingStage stage = stages.get(currentStage);
+        repetition = 1;
+        phaseIsContraction = true;
+        secondsLeft = stage.mode == 1
+                ? stage.contractionSeconds : stage.duration;
+        stageDuration = secondsLeft;
 
-        setup("تمرین روز " + selectedDay);
+        // صفحه تمرین: تایمر در مرکز واقعی صفحه و کنترل‌ها در پایین
+        root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.setBackgroundColor(BG);
 
-        LinearLayout info = makeCard();
-        addText(info, "هفته " + selectedWeek + "  •  روز " + selectedDay,
-                15, MUTED);
-        addText(info, "مرحله " + (currentStep + 1) + " از " + steps.size(),
-                17, WHITE);
+        TextView header = makeText("✦   تمرین روز " + selectedDay, 20, WHITE);
+        header.setTypeface(null, Typeface.BOLD);
+        header.setBackground(gradient(0));
+        header.setPadding(dp(12), dp(15), dp(12), dp(15));
+        root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        info.setGravity(Gravity.CENTER);
+        info.setPadding(dp(12), dp(8), dp(12), dp(4));
+        TextView weekText = makeText("هفته " + selectedWeek + "  •  روز " + selectedDay,
+                14, MUTED);
+        info.addView(weekText);
+        TextView stageText = makeText("مرحله " + (currentStage + 1) + " از " + stages.size(),
+                16, WHITE);
+        info.addView(stageText);
         ProgressBar stageBar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
-        stageBar.setMax(steps.size());
-        stageBar.setProgress(currentStep);
-        info.addView(stageBar);
+        stageBar.setMax(stages.size());
+        stageBar.setProgress(currentStage);
+        info.addView(stageBar, new LinearLayout.LayoutParams(-1, dp(5)));
+        root.addView(info, new LinearLayout.LayoutParams(-1, -2));
 
-        LinearLayout visual = makeCard();
-        exerciseArt = new ExerciseArt(s.contractions[0]);
-        visual.addView(exerciseArt, new LinearLayout.LayoutParams(-1, dp(205)));
+        // فضای انعطاف‌پذیر باعث می‌شود دایره در مرکز عمودی صفحه قرار بگیرد.
+        LinearLayout center = new LinearLayout(this);
+        center.setOrientation(LinearLayout.VERTICAL);
+        center.setGravity(Gravity.CENTER);
+        root.addView(center, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        TextView title = makeText(s.title, 22, WHITE);
-        title.setTypeface(null, Typeface.BOLD);
-        visual.addView(title);
-
-        TextView description = makeText(s.description, 15, MUTED);
-        visual.addView(description);
-
-        timerLabel = makeText("", 15, PINK);
-        visual.addView(timerLabel);
+        TextView stageName = makeText(stage.title, 18, WHITE);
+        stageName.setTypeface(null, Typeface.BOLD);
+        center.addView(stageName, new LinearLayout.LayoutParams(-1, -2));
 
         circleTimer = new CircleTimer();
-        circleTimer.setValue(secondsLeft, phaseDuration);
-        visual.addView(circleTimer, new LinearLayout.LayoutParams(
-                dp(210), dp(210)));
+        circleTimer.setValue(secondsLeft, stageDuration);
+        LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(
+                dp(270), dp(270));
+        timerParams.gravity = Gravity.CENTER;
+        timerParams.topMargin = dp(12);
+        timerParams.bottomMargin = dp(12);
+        center.addView(circleTimer, timerParams);
 
-        updateTimer();
+        TextView instruction = makeText(stage.description, 13, MUTED);
+        instruction.setMaxLines(3);
+        center.addView(instruction, new LinearLayout.LayoutParams(-1, -2));
 
-        addButton("▶ شروع مرحله با اجازه من", () -> startStage());
-        addButton("⏸ توقف تمرین", () -> pauseStage());
-        addButton("بازگشت به خانه", () -> {
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setPadding(dp(14), dp(4), dp(14), dp(12));
+        root.addView(controls, new LinearLayout.LayoutParams(-1, -2));
+
+        Button startButton = new Button(this);
+        startButton.setText(currentStage == 0
+                ? "▶ شروع مرحله اول با اجازه من"
+                : "▶ شروع مرحله بعد با اجازه من");
+        startButton.setTextColor(WHITE);
+        startButton.setTextSize(15);
+        startButton.setAllCaps(false);
+        startButton.setBackground(gradient(16));
+        controls.addView(startButton, new LinearLayout.LayoutParams(-1, -2));
+        startButton.setOnClickListener(v -> startStage());
+
+        Button pauseButton = new Button(this);
+        pauseButton.setText("⏸ توقف تمرین");
+        pauseButton.setTextColor(WHITE);
+        pauseButton.setAllCaps(false);
+        pauseButton.setBackground(shape(CARD, 16));
+        controls.addView(pauseButton, new LinearLayout.LayoutParams(-1, -2));
+        pauseButton.setOnClickListener(v -> pauseStage());
+
+        Button homeButton = new Button(this);
+        homeButton.setText("بازگشت به خانه");
+        homeButton.setTextColor(WHITE);
+        homeButton.setAllCaps(false);
+        homeButton.setBackground(shape(CARD, 16));
+        controls.addView(homeButton, new LinearLayout.LayoutParams(-1, -2));
+        homeButton.setOnClickListener(v -> {
             pauseStage();
             showHome();
         });
 
-        speak(s.title + ". " + s.description);
+        setContentView(root);
+        updateStageText();
+        updateTimer();
+        speak(stage.title + ". " + stage.description);
     }
 
-    private void startStage() {
-        if (running || sessionFinished) return;
+    private void updateStageText() {
+        if (currentStage >= stages.size()) return;
 
-        running = true;
-        speak(steps.get(currentStep).title);
+        TrainingStage stage = stages.get(currentStage);
 
-        handler.removeCallbacks(timerRunnable);
-        handler.postDelayed(timerRunnable, 1000);
-    }
-
-    private void advancePhase() {
-        TrainingStage s = steps.get(currentStep);
-
-        currentPhase++;
-
-        if (currentPhase < s.durations.length) {
-            secondsLeft = s.durations[currentPhase];
-            phaseDuration = secondsLeft;
-
-            boolean contraction = s.contractions[currentPhase];
-
-            if (exerciseArt != null) {
-                exerciseArt.setContraction(contraction);
+        if (stage.mode == 1) {
+            if (phaseIsContraction) {
+                if (circleTimer != null) circleTimer.setContraction(true);
+            } else {
+                if (circleTimer != null) circleTimer.setContraction(false);
             }
-
-            speak(contraction ? "انقباض ملایم" : "رهاسازی و استراحت");
-
-            updateTimer();
-            handler.postDelayed(timerRunnable, 1000);
-            return;
-        }
-
-        running = false;
-        handler.removeCallbacks(timerRunnable);
-
-        if (currentStep == steps.size() - 1) {
-            finishTraining();
         } else {
-            currentStep++;
-            showWaitingForPermission();
+            if (circleTimer != null) circleTimer.setContraction(false);
         }
     }
 
     private void showWaitingForPermission() {
         prepareStage();
         Toast.makeText(this,
-                "مرحله قبلی تمام شد. برای مرحله بعد آماده‌اید؟",
+                "مرحله قبلی تمام شد. برای شروع مرحله بعد دکمه شروع را بزنید.",
+                Toast.LENGTH_LONG).show();
+    }
+
+    private void startStage() {
+        if (running || sessionFinished || currentStage >= stages.size()) return;
+
+        running = true;
+        TrainingStage stage = stages.get(currentStage);
+
+        if (stage.mode == 1) {
+            speak(phaseIsContraction ? "انقباض ملایم" : "رها کنید");
+        } else {
+            speak(stage.title);
+        }
+
+        handler.removeCallbacks(timerRunnable);
+        handler.postDelayed(timerRunnable, 1000);
+    }
+
+    private void completeStageAndWait() {
+        pauseStage();
+
+        if (currentStage >= stages.size() - 1) {
+            finishTraining();
+            return;
+        }
+
+        currentStage++;
+        prepareStage();
+        Toast.makeText(this,
+                "مرحله تمام شد؛ برای شروع مرحله بعد اجازه شما لازم است.",
                 Toast.LENGTH_LONG).show();
     }
 
@@ -626,11 +695,8 @@ public class MainActivity extends Activity {
     }
 
     private void updateTimer() {
-        if (timerLabel != null) {
-            timerLabel.setText("زمان باقی‌مانده: " + secondsLeft + " ثانیه");
-        }
         if (circleTimer != null) {
-            circleTimer.setValue(secondsLeft, phaseDuration);
+            circleTimer.setValue(secondsLeft, stageDuration);
         }
     }
 
@@ -662,16 +728,23 @@ public class MainActivity extends Activity {
     }
 
     private class CircleTimer extends View {
-        private final Paint p = new Paint(3);
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private int value = 0;
         private int max = 1;
+        private boolean contraction = false;
 
         CircleTimer() {
             super(MainActivity.this);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        }
+
+        void setContraction(boolean active) {
+            contraction = active;
+            invalidate();
         }
 
         void setValue(int v, int m) {
-            value = v;
+            value = Math.max(0, v);
             max = Math.max(1, m);
             invalidate();
         }
@@ -682,103 +755,50 @@ public class MainActivity extends Activity {
 
             float cx = getWidth() / 2f;
             float cy = getHeight() / 2f;
-            float r = Math.min(cx, cy) - dp(17);
+            float radius = Math.min(cx, cy) - dp(22);
+            int activeColor = contraction
+                    ? Color.rgb(245, 65, 75)
+                    : Color.rgb(45, 165, 235);
 
             p.setStyle(Paint.Style.STROKE);
-            p.setStrokeWidth(dp(13));
+            p.setStrokeWidth(dp(15));
             p.setStrokeCap(Paint.Cap.ROUND);
-            p.setColor(Color.rgb(83, 62, 112));
-            canvas.drawCircle(cx, cy, r, p);
+            p.setColor(Color.rgb(76, 59, 101));
+            canvas.drawCircle(cx, cy, radius, p);
 
-            p.setColor(PINK);
-            canvas.drawArc(cx-r, cy-r, cx+r, cy+r,
-                    -90, 360f * value / max, false, p);
+            p.setColor(activeColor);
+            float sweep = 360f * Math.min(value, max) / max;
+            canvas.drawArc(cx - radius, cy - radius,
+                    cx + radius, cy + radius,
+                    -90, sweep, false, p);
 
             p.setStyle(Paint.Style.FILL);
             p.setColor(WHITE);
             p.setTextAlign(Paint.Align.CENTER);
+            p.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            p.setTextSize(dp(48));
+            canvas.drawText(String.valueOf(value), cx, cy + dp(12), p);
+
+            p.setTextSize(dp(15));
+            p.setColor(activeColor);
             p.setTypeface(Typeface.DEFAULT_BOLD);
-            p.setTextSize(dp(31));
+            String phaseLabel;
+            if (currentStage < stages.size() && stages.get(currentStage).mode == 1) {
+                phaseLabel = (contraction ? "انقباض " : "رهایی ") +
+                        repetition + " از " + stages.get(currentStage).repetitions;
+            } else if (currentStage < stages.size() &&
+                    stages.get(currentStage).title.contains("آماده")) {
+                phaseLabel = "آماده‌سازی";
+            } else {
+                phaseLabel = "آرام‌سازی";
+            }
+            canvas.drawText(phaseLabel, cx, cy + dp(43), p);
 
-            String time = String.format(Locale.US, "%02d:%02d",
-                    value / 60, value % 60);
-            canvas.drawText(time, cx, cy + dp(10), p);
-        }
-    }
-
-    private class ExerciseArt extends View {
-        private final Paint p = new Paint(3);
-        private boolean contraction;
-        private float phase = 0;
-
-        ExerciseArt(boolean c) {
-            super(MainActivity.this);
-            contraction = c;
-        }
-
-        void setContraction(boolean c) {
-            contraction = c;
-            invalidate();
-        }
-
-        private void line(Canvas c, float x1, float y1, float x2,
-                          float y2, int color, float width) {
-            p.setColor(color);
-            p.setStrokeWidth(width);
-            p.setStrokeCap(Paint.Cap.ROUND);
-            p.setStyle(Paint.Style.STROKE);
-            c.drawLine(x1, y1, x2, y2, p);
-            p.setStyle(Paint.Style.FILL);
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-
-            float w = getWidth();
-            float h = getHeight();
-            canvas.drawColor(Color.rgb(42, 27, 69));
-
-            phase += 0.07f;
-            float lift = (float)Math.sin(phase) * dp(3);
-
-            p.setColor(Color.rgb(91, 64, 125));
-            canvas.drawRoundRect(dp(12), h*.78f, w-dp(12), h*.86f,
-                    dp(15), dp(15), p);
-
-            p.setColor(Color.rgb(180, 135, 215));
-            canvas.drawRoundRect(w*.08f, h*.66f, w*.29f, h*.78f,
-                    dp(14), dp(14), p);
-
-            p.setColor(Color.rgb(230, 155, 190));
-            canvas.drawRoundRect(w*.23f, h*.57f+lift,
-                    w*.65f, h*.73f+lift, dp(35), dp(35), p);
-
-            p.setColor(Color.rgb(245, 190, 160));
-            canvas.drawCircle(w*.20f, h*.55f+lift, dp(23), p);
-
-            p.setColor(Color.rgb(75, 40, 35));
-            canvas.drawCircle(w*.18f, h*.53f+lift, dp(24), p);
-
-            line(canvas, w*.60f, h*.66f+lift, w*.75f, h*.48f,
-                    Color.rgb(230, 155, 190), dp(20));
-            line(canvas, w*.75f, h*.48f, w*.90f, h*.70f,
-                    Color.rgb(230, 155, 190), dp(20));
-            line(canvas, w*.55f, h*.67f+lift, w*.76f, h*.74f,
-                    Color.rgb(230, 155, 190), dp(19));
-
-            p.setColor(PINK);
-            p.setTextAlign(Paint.Align.CENTER);
-            p.setTextSize(dp(37));
-            canvas.drawText(contraction ? "↑" : "↓",
-                    w*.51f, h*.46f + lift, p);
-
-            p.setTextSize(dp(12));
+            p.setTextSize(dp(11));
             p.setColor(MUTED);
-            canvas.drawText(contraction ? "انقباض ملایم" : "رهاسازی و آرامش",
-                    w/2, h-dp(5), p);
-
-            postInvalidateDelayed(90);
+            p.setTypeface(Typeface.DEFAULT);
+            canvas.drawText("ثانیه باقی‌مانده",
+                    cx, cy + dp(65), p);
         }
     }
 
@@ -809,22 +829,18 @@ public class MainActivity extends Activity {
 
     private void showExercises() {
         setup("ورزش‌های مکمل");
-
         for (int i = 0; i < exerciseNames.length; i++) {
             LinearLayout c = makeCard();
             addText(c, exerciseNames[i], 18, WHITE);
             addText(c, exerciseDescriptions[i], 14, MUTED);
         }
-
         addButton("بازگشت", () -> showHome());
     }
 
     private void showGuide() {
         setup("آموزش کگل");
-
         LinearLayout c = makeCard();
         addText(c, "روش صحیح تمرین", 21, PINK);
-
         addText(c,
                 "۱. در وضعیت راحت قرار بگیرید.\n" +
                 "۲. عضلات کف لگن را به‌آرامی منقبض کنید.\n" +
@@ -832,21 +848,16 @@ public class MainActivity extends Activity {
                 "۴. عضلات را کاملاً رها کنید.\n" +
                 "۵. بین انقباض‌ها استراحت کافی داشته باشید.",
                 15, WHITE);
-
         addText(c,
                 "تمرین کگل را هنگام ادرار کردن انجام ندهید.",
                 14, MUTED);
-
         addButton("بازگشت", () -> showHome());
     }
 
     private void showSafety() {
         setup("نکات ایمنی");
-
         LinearLayout c = makeCard();
-        addText(c, "سلامت شما مهم‌تر از تعداد تمرین‌هاست.",
-                19, PINK);
-
+        addText(c, "سلامت شما مهم‌تر از تعداد تمرین‌هاست.", 19, PINK);
         addText(c,
                 "• تمرین نباید باعث درد شود.\n" +
                 "• از فشار آوردن خودداری کنید.\n" +
@@ -856,13 +867,11 @@ public class MainActivity extends Activity {
                 "• در صورت درد یا گرفتگی تمرین را متوقف کنید.\n" +
                 "• در صورت درد لگن یا مشکل ادراری با پزشک مشورت کنید.",
                 15, WHITE);
-
         addButton("بازگشت", () -> showHome());
     }
 
     private void showSettings() {
         setup("تنظیمات صدا");
-
         LinearLayout c = makeCard();
 
         Switch soundSwitch = new Switch(this);
@@ -886,10 +895,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        addText(c,
-                "صدای زنانه به صداهای فارسی نصب‌شده روی گوشی وابسته است.",
+        addText(c, "صدای زنانه به صداهای فارسی نصب‌شده روی گوشی وابسته است.",
                 13, MUTED);
-
         addButton("بازگشت", () -> showHome());
     }
 
