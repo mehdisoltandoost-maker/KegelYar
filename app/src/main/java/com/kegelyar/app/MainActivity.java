@@ -3,6 +3,9 @@ package com.kegelyar.app;
 import android.app.Activity;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Vibrator;
+import android.os.VibrationEffect;
+import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Color;
@@ -34,9 +37,11 @@ public class MainActivity extends Activity {
     private CircleTimer circleTimer;
     private SharedPreferences prefs;
     private TextToSpeech tts;
+    private Vibrator vibrator;
 
     private boolean ttsReady = false;
     private boolean soundEnabled = true;
+    private boolean vibrationEnabled = true;
     private boolean running = false;
     private boolean sessionFinished = false;
     private boolean phaseIsContraction = true;
@@ -48,6 +53,11 @@ public class MainActivity extends Activity {
     private int secondsLeft = 0;
     private int stageDuration = 1;
     private int repetition = 1;
+    // نوبت‌های مستقل روزانه: صبح، ظهر و شب
+    private String selectedSession = "morning";
+    private boolean morningEnabled = true;
+    private boolean noonEnabled = false;
+    private boolean nightEnabled = false;
 
     private final Handler handler = new Handler();
     private final ArrayList<TrainingStage> stages = new ArrayList<>();
@@ -148,6 +158,7 @@ public class MainActivity extends Activity {
                         secondsLeft = stage.releaseSeconds;
                         stageDuration = stage.releaseSeconds;
                         speak("رها کنید");
+                        vibrate(2);
                         updateStageText();
                         updateTimer();
                         handler.postDelayed(this, 1000);
@@ -160,6 +171,7 @@ public class MainActivity extends Activity {
                             secondsLeft = stage.contractionSeconds;
                             stageDuration = stage.contractionSeconds;
                             speak("انقباض ملایم");
+                            vibrate(1);
                             updateStageText();
                             updateTimer();
                             handler.postDelayed(this, 1000);
@@ -185,6 +197,11 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("KegelYarData", MODE_PRIVATE);
         soundEnabled = prefs.getBoolean("sound", true);
+        vibrationEnabled = prefs.getBoolean("vibration", true);
+        morningEnabled = prefs.getBoolean("session_morning", true);
+        noonEnabled = prefs.getBoolean("session_noon", false);
+        nightEnabled = prefs.getBoolean("session_night", false);
+        vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         gender = prefs.getString("gender", "");
 
         initTTS();
@@ -218,6 +235,30 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    // الگوهای لرزش: ۱ انقباض، ۲ رهایی، ۳ پایان مرحله، ۴ پایان جلسه
+    private void vibrate(int type) {
+        if (!vibrationEnabled || vibrator == null || !vibrator.hasVibrator()) return;
+
+        long[] pattern;
+        if (type == 1) {
+            pattern = new long[]{0, 110};
+        } else if (type == 2) {
+            pattern = new long[]{0, 65, 100, 65};
+        } else if (type == 3) {
+            pattern = new long[]{0, 160, 100, 160};
+        } else {
+            pattern = new long[]{0, 220, 120, 220, 120, 350};
+        }
+
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
+            } else {
+                vibrator.vibrate(pattern, -1);
+            }
+        } catch (Exception ignored) { }
     }
 
     private void speak(String s) {
@@ -325,8 +366,33 @@ public class MainActivity extends Activity {
         return "week_" + week + "_day_" + day;
     }
 
+    private String sessionKey(int week, int day, String session) {
+        return "week_" + week + "_day_" + day + "_session_" + session;
+    }
+
+    private boolean isSessionEnabled(String session) {
+        if ("morning".equals(session)) return morningEnabled;
+        if ("noon".equals(session)) return noonEnabled;
+        return nightEnabled;
+    }
+
+    private int enabledSessionCount() {
+        return (morningEnabled ? 1 : 0) + (noonEnabled ? 1 : 0)
+                + (nightEnabled ? 1 : 0);
+    }
+
+    private boolean isSessionDone(int week, int day, String session) {
+        return prefs.getBoolean(sessionKey(week, day, session), false);
+    }
+
     private boolean isDayDone(int week, int day) {
-        return prefs.getBoolean(dayKey(week, day), false);
+        // روزهای تکمیل‌شده در نسخه قبلی نیز حفظ می‌شوند.
+        if (prefs.getBoolean(dayKey(week, day), false)) return true;
+        if (enabledSessionCount() == 0) return false;
+        if (morningEnabled && !isSessionDone(week, day, "morning")) return false;
+        if (noonEnabled && !isSessionDone(week, day, "noon")) return false;
+        if (nightEnabled && !isSessionDone(week, day, "night")) return false;
+        return true;
     }
 
     private int getWeekCompleted(int week) {
@@ -378,6 +444,10 @@ public class MainActivity extends Activity {
     }
 
     private void showHome() {
+        if (getTotalCompleted() < 84) {
+            selectedWeek = getFirstAvailableWeek();
+            selectedDay = getFirstIncompleteDay(selectedWeek);
+        }
         setup("کگل‌یار");
 
         LinearLayout hero = makeCard();
@@ -388,7 +458,7 @@ public class MainActivity extends Activity {
 
         LinearLayout progress = makeCard();
         addText(progress, "پیشرفت کلی شما", 18, WHITE);
-        addText(progress, getTotalCompleted() + " از ۸۴ جلسه", 23, PINK);
+        addText(progress, getTotalCompleted() + " از ۸۴ روز", 23, PINK);
 
         ProgressBar bar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
@@ -396,15 +466,16 @@ public class MainActivity extends Activity {
         bar.setProgress(getTotalCompleted());
         progress.addView(bar, new LinearLayout.LayoutParams(-1, dp(12)));
 
-        addButton("▶ شروع تمرین روزانه", () -> {
-            if (getTotalCompleted() >= 84) {
-                showProgress();
-                return;
-            }
-            selectedWeek = getFirstAvailableWeek();
-            selectedDay = getFirstIncompleteDay(selectedWeek);
-            showTraining();
-        });
+        LinearLayout daily = makeCard();
+        addText(daily, "تمرین‌های امروز", 19, WHITE);
+        addText(daily, "هر نوبت را جداگانه شروع کنید؛ برنامه هر نوبت متفاوت است.", 13, MUTED);
+        if (morningEnabled) addSessionLaunch(daily, "☀ تمرین صبح", "morning");
+        if (noonEnabled) addSessionLaunch(daily, "◉ تمرین ظهر", "noon");
+        if (nightEnabled) addSessionLaunch(daily, "☾ تمرین شب", "night");
+        if (enabledSessionCount() == 0) {
+            addText(daily, "برای شروع، دست‌کم یک نوبت را در تنظیمات فعال کنید.", 14, PINK);
+        }
+        addButton("تنظیم نوبت‌های صبح، ظهر و شب", () -> showSettings());
 
         addButton("▦ برنامه ۱۲ هفته‌ای", () -> showWeeks());
         addButton("◉ پیشرفت من", () -> showProgress());
@@ -413,6 +484,29 @@ public class MainActivity extends Activity {
         addButton("🛡 نکات ایمنی", () -> showSafety());
         addButton("⚙ تنظیمات صدا", () -> showSettings());
         addButton("تغییر گروه تمرینی", () -> showGender());
+    }
+
+    private void addSessionLaunch(LinearLayout parent, String title, String session) {
+        Button b = new Button(this);
+        b.setText(title + "  ·  " + (isSessionDone(selectedWeek, selectedDay, session)
+                ? "تکمیل‌شده" : "شروع"));
+        b.setTextColor(WHITE);
+        b.setAllCaps(false);
+        b.setBackground(shape(PURPLE, 14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(4), 0, dp(4));
+        parent.addView(b, lp);
+        b.setOnClickListener(v -> {
+            if (getTotalCompleted() >= 84) { showProgress(); return; }
+            selectedWeek = getFirstAvailableWeek();
+            selectedDay = getFirstIncompleteDay(selectedWeek);
+            selectedSession = session;
+            if (isSessionDone(selectedWeek, selectedDay, session)) {
+                Toast.makeText(this, "این نوبت قبلاً تکمیل شده است.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            showTraining();
+        });
     }
 
     private void showWeeks() {
@@ -471,11 +565,13 @@ public class MainActivity extends Activity {
             addText(c, "روز " + day + (done ? "   ✓" : "   ○"), 18, WHITE);
             addText(c, done ? "جلسه تکمیل شده" : "جلسه تمرینی", 14, MUTED);
 
-            if (!done) {
-                addCardButton(c, "شروع این جلسه", () -> {
-                    selectedDay = day;
-                    showTraining();
-                });
+            if (!done && day == getFirstIncompleteDay(selectedWeek)) {
+                addText(c, "نوبت‌های قابل انتخاب:", 13, MUTED);
+                if (morningEnabled) addDaySessionButton(c, day, "☀ صبح", "morning");
+                if (noonEnabled) addDaySessionButton(c, day, "◉ ظهر", "noon");
+                if (nightEnabled) addDaySessionButton(c, day, "☾ شب", "night");
+            } else if (!done) {
+                addText(c, "پس از تکمیل روز قبلی فعال می‌شود.", 13, MUTED);
             }
         }
 
@@ -483,37 +579,57 @@ public class MainActivity extends Activity {
         addButton("خانه", () -> showHome());
     }
 
+    private void addDaySessionButton(LinearLayout card, int day, String label, String session) {
+        boolean completed = isSessionDone(selectedWeek, day, session);
+        addCardButton(card, label + (completed ? "  ✓ انجام شده" : "  ▶ شروع"), () -> {
+            if (completed) {
+                Toast.makeText(this, "این نوبت تکمیل شده است.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            selectedDay = day;
+            selectedSession = session;
+            showTraining();
+        });
+    }
+
     private void buildTrainingStages() {
         stages.clear();
 
+        // هر نوبت الگوی زمانی مستقل دارد؛ همه تکرارهای هر مرحله خودکارند.
+        int sessionOffset = "morning".equals(selectedSession) ? 0
+                : ("noon".equals(selectedSession) ? 1 : 2);
+
         if (selectedDay == 7) {
+            int recovery = 45 + sessionOffset * 10;
             stages.add(new TrainingStage("تنفس آرام",
-                    "به‌آرامی نفس بکشید و عضلات را رها کنید.", 60, false));
+                    "به‌آرامی نفس بکشید و عضلات را رها کنید.", recovery, false));
             stages.add(new TrainingStage("رهاسازی عضلات",
-                    "بدون انقباض، عضلات را کاملاً آزاد نگه دارید.", 60, false));
+                    "بدون انقباض، عضلات را کاملاً آزاد نگه دارید.", recovery, false));
             stages.add(new TrainingStage("آرام‌سازی پایانی",
-                    "چند نفس آرام بکشید و استراحت کنید.", 60, false));
+                    "چند نفس آرام بکشید و استراحت کنید.", recovery, false));
             return;
         }
 
+        int warmup = 30 + sessionOffset * 10;
         stages.add(new TrainingStage("آماده‌سازی و تنفس",
-                "در وضعیت راحت قرار بگیرید و آرام نفس بکشید.", 45, false));
+                "در وضعیت راحت قرار بگیرید و آرام نفس بکشید.", warmup, false));
 
-        int hold = Math.min(8, 3 + (selectedWeek - 1) / 2);
-        int rest = hold + 2;
-        int reps = selectedWeek < 4 ? 4 : 5;
+        int hold = Math.min(8, 3 + (selectedWeek - 1) / 2 + (sessionOffset == 1 ? 1 : 0));
+        int rest = hold + (sessionOffset == 2 ? 3 : 2);
+        int reps = (selectedWeek < 4 ? 4 : 5) + (sessionOffset == 2 ? 1 : 0);
 
         stages.add(new TrainingStage("انقباض و رهاسازی کنترل‌شده",
                 "با راهنمای صوتی، انقباض ملایم و سپس رهاسازی کامل را تکرار کنید. نفس را حبس نکنید.",
                 reps, hold, rest));
 
-        int quick = selectedWeek < 4 ? 3 : 5;
+        int quick = (selectedWeek < 4 ? 3 : 5) + sessionOffset;
         stages.add(new TrainingStage("انقباض‌های کوتاه",
                 "انقباض‌های کوتاه و ملایم را با رهاسازی کامل بین آن‌ها انجام دهید.",
                 quick, 2, 4));
 
+        int cooldown = 35 + sessionOffset * 10;
         stages.add(new TrainingStage("آرام‌سازی پایانی",
-                "عضلات کف لگن را کاملاً آزاد کنید و آرام نفس بکشید.", 45, false));
+                "عضلات کف لگن را کاملاً آزاد کنید و آرام نفس بکشید.", cooldown, false));
     }
 
     private void showTraining() {
@@ -547,7 +663,9 @@ public class MainActivity extends Activity {
         root.setGravity(Gravity.CENTER_HORIZONTAL);
         root.setBackgroundColor(BG);
 
-        TextView header = makeText("✦   تمرین روز " + selectedDay, 20, WHITE);
+        String sessionTitle = "morning".equals(selectedSession) ? "صبح"
+                : ("noon".equals(selectedSession) ? "ظهر" : "شب");
+        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, WHITE);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
@@ -557,8 +675,8 @@ public class MainActivity extends Activity {
         info.setOrientation(LinearLayout.VERTICAL);
         info.setGravity(Gravity.CENTER);
         info.setPadding(dp(12), dp(8), dp(12), dp(4));
-        TextView weekText = makeText("هفته " + selectedWeek + "  •  روز " + selectedDay,
-                14, MUTED);
+        TextView weekText = makeText("هفته " + selectedWeek + "  •  روز " + selectedDay
+                + "  •  نوبت " + sessionTitle, 14, MUTED);
         info.addView(weekText);
         TextView stageText = makeText("مرحله " + (currentStage + 1) + " از " + stages.size(),
                 16, WHITE);
@@ -665,8 +783,10 @@ public class MainActivity extends Activity {
 
         if (stage.mode == 1) {
             speak(phaseIsContraction ? "انقباض ملایم" : "رها کنید");
+            vibrate(phaseIsContraction ? 1 : 2);
         } else {
             speak(stage.title);
+            vibrate(1);
         }
 
         handler.removeCallbacks(timerRunnable);
@@ -675,6 +795,7 @@ public class MainActivity extends Activity {
 
     private void completeStageAndWait() {
         pauseStage();
+        vibrate(3);
 
         if (currentStage >= stages.size() - 1) {
             finishTraining();
@@ -692,6 +813,7 @@ public class MainActivity extends Activity {
         running = false;
         handler.removeCallbacks(timerRunnable);
         if (tts != null) tts.stop();
+        if (vibrator != null) vibrator.cancel();
     }
 
     private void updateTimer() {
@@ -705,17 +827,23 @@ public class MainActivity extends Activity {
 
         sessionFinished = true;
         pauseStage();
+        vibrate(4);
 
         prefs.edit()
-                .putBoolean(dayKey(selectedWeek, selectedDay), true)
+                .putBoolean(sessionKey(selectedWeek, selectedDay, selectedSession), true)
                 .apply();
 
         setup("آفرین! جلسه کامل شد");
 
         LinearLayout c = makeCard();
         addText(c, "🏆 تبریک می‌گوییم!", 24, PINK);
-        addText(c, "تمام مراحل این جلسه با موفقیت انجام شد.", 16, WHITE);
-        addText(c, "پیشرفت کل: " + getTotalCompleted() + " از ۸۴ جلسه",
+        addText(c, "نوبت " + ("morning".equals(selectedSession) ? "صبح"
+                : ("noon".equals(selectedSession) ? "ظهر" : "شب"))
+                + " با موفقیت انجام شد.", 16, WHITE);
+        addText(c, isDayDone(selectedWeek, selectedDay)
+                ? "همه نوبت‌های فعال این روز تکمیل شد."
+                : "برای تکمیل روز، نوبت‌های فعال دیگر را هم انجام دهید.", 14, MUTED);
+        addText(c, "پیشرفت کل: " + getTotalCompleted() + " از ۸۴ روز",
                 18, GREEN);
 
         if (getWeekCompleted(selectedWeek) == 7 && selectedWeek < 12) {
@@ -810,8 +938,9 @@ public class MainActivity extends Activity {
 
         LinearLayout c = makeCard();
         addText(c, "مسیر پیشرفت شما", 22, WHITE);
-        addText(c, total + " از ۸۴ جلسه", 20, GREEN);
+        addText(c, total + " از ۸۴ روز", 20, GREEN);
         addText(c, percent + " درصد تکمیل شده", 18, PINK);
+        addText(c, "نوبت‌های فعال: " + enabledSessionCount() + " نوبت در روز", 14, MUTED);
 
         ProgressBar bar = new ProgressBar(this, null,
                 android.R.attr.progressBarStyleHorizontal);
@@ -871,19 +1000,84 @@ public class MainActivity extends Activity {
     }
 
     private void showSettings() {
-        setup("تنظیمات صدا");
+        setup("تنظیمات صدا و ویبره");
         LinearLayout c = makeCard();
+        addText(c, "انتخاب نوبت‌های روزانه", 18, PINK);
+        addText(c, "می‌توانید فقط یک نوبت، دو نوبت یا هر سه نوبت را فعال کنید.", 13, MUTED);
+
+        Switch morningSwitch = new Switch(this);
+        morningSwitch.setText("تمرین صبح");
+        morningSwitch.setTextColor(WHITE);
+        morningSwitch.setChecked(morningEnabled);
+        c.addView(morningSwitch);
+        morningSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (!checked && enabledSessionCount() == 1) {
+                morningSwitch.setChecked(true);
+                Toast.makeText(this, "حداقل یک نوبت باید فعال باشد.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            morningEnabled = checked;
+            prefs.edit().putBoolean("session_morning", checked).apply();
+        });
+
+        Switch noonSwitch = new Switch(this);
+        noonSwitch.setText("تمرین ظهر");
+        noonSwitch.setTextColor(WHITE);
+        noonSwitch.setChecked(noonEnabled);
+        c.addView(noonSwitch);
+        noonSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (!checked && enabledSessionCount() == 1) {
+                noonSwitch.setChecked(true);
+                Toast.makeText(this, "حداقل یک نوبت باید فعال باشد.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            noonEnabled = checked;
+            prefs.edit().putBoolean("session_noon", checked).apply();
+        });
+
+        Switch nightSwitch = new Switch(this);
+        nightSwitch.setText("تمرین شب");
+        nightSwitch.setTextColor(WHITE);
+        nightSwitch.setChecked(nightEnabled);
+        c.addView(nightSwitch);
+        nightSwitch.setOnCheckedChangeListener((button, checked) -> {
+            if (!checked && enabledSessionCount() == 1) {
+                nightSwitch.setChecked(true);
+                Toast.makeText(this, "حداقل یک نوبت باید فعال باشد.", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            nightEnabled = checked;
+            prefs.edit().putBoolean("session_night", checked).apply();
+        });
+
+        View sessionSeparator = new View(this);
+        c.addView(sessionSeparator, new LinearLayout.LayoutParams(-1, dp(12)));
+        addText(c, "صدا و لرزش", 18, PINK);
 
         Switch soundSwitch = new Switch(this);
         soundSwitch.setText("فعال بودن صدای راهنما");
         soundSwitch.setTextColor(WHITE);
         soundSwitch.setChecked(soundEnabled);
         c.addView(soundSwitch);
-
         soundSwitch.setOnCheckedChangeListener((button, checked) -> {
             soundEnabled = checked;
             prefs.edit().putBoolean("sound", checked).apply();
             if (!checked && tts != null) tts.stop();
+        });
+
+        View separator = new View(this);
+        c.addView(separator, new LinearLayout.LayoutParams(-1, dp(10)));
+
+        Switch vibrationSwitch = new Switch(this);
+        vibrationSwitch.setText("فعال بودن ویبره تمرین");
+        vibrationSwitch.setTextColor(WHITE);
+        vibrationSwitch.setChecked(vibrationEnabled);
+        c.addView(vibrationSwitch);
+        vibrationSwitch.setOnCheckedChangeListener((button, checked) -> {
+            vibrationEnabled = checked;
+            prefs.edit().putBoolean("vibration", checked).apply();
+            if (checked) vibrate(1);
+            else if (vibrator != null) vibrator.cancel();
         });
 
         addCardButton(c, "آزمایش صدای راهنما", () -> {
@@ -895,7 +1089,11 @@ public class MainActivity extends Activity {
             }
         });
 
+        addCardButton(c, "آزمایش ویبره", () -> vibrate(3));
+
         addText(c, "صدای زنانه به صداهای فارسی نصب‌شده روی گوشی وابسته است.",
+                13, MUTED);
+        addText(c, "برای دریافت لرزش، ویبره گوشی نیز باید از تنظیمات دستگاه روشن باشد.",
                 13, MUTED);
         addButton("بازگشت", () -> showHome());
     }
@@ -909,6 +1107,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         handler.removeCallbacks(timerRunnable);
+        if (vibrator != null) vibrator.cancel();
         if (tts != null) {
             tts.stop();
             tts.shutdown();
