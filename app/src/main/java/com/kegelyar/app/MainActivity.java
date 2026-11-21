@@ -24,13 +24,13 @@ import java.util.Set;
 
 public class MainActivity extends Activity {
 
-    private final int BG = Color.rgb(24, 14, 48);
-    private final int CARD = Color.rgb(53, 34, 83);
-    private final int PURPLE = Color.rgb(145, 65, 235);
-    private final int PINK = Color.rgb(230, 105, 205);
-    private final int WHITE = Color.WHITE;
-    private final int MUTED = Color.rgb(205, 190, 225);
-    private final int GREEN = Color.rgb(75, 210, 155);
+    private final int BG = Color.rgb(248, 245, 253);
+    private final int CARD = Color.WHITE;
+    private final int PURPLE = Color.rgb(143, 94, 205);
+    private final int PINK = Color.rgb(222, 126, 184);
+    private final int WHITE = Color.rgb(55, 42, 75);
+    private final int MUTED = Color.rgb(125, 112, 142);
+    private final int GREEN = Color.rgb(55, 155, 115);
 
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription;
@@ -145,18 +145,23 @@ public class MainActivity extends Activity {
         @Override
         public void run() {
             if (!running || sessionFinished) return;
+            if (currentStage < 0 || currentStage >= stages.size()) {
+                running = false;
+                handler.removeCallbacks(this);
+                return;
+            }
 
-            secondsLeft--;
+            secondsLeft = Math.max(0, secondsLeft - 1);
 
-            if (secondsLeft <= 0) {
+            if (secondsLeft == 0) {
                 TrainingStage stage = stages.get(currentStage);
 
                 if (stage.mode == 1) {
                     if (phaseIsContraction) {
                         // پایان انقباض؛ ورود خودکار به رهاسازی
                         phaseIsContraction = false;
-                        secondsLeft = stage.releaseSeconds;
-                        stageDuration = stage.releaseSeconds;
+                        secondsLeft = Math.max(1, stage.releaseSeconds);
+                        stageDuration = secondsLeft;
                         speak("رها کنید");
                         vibrate(2);
                         updateStageText();
@@ -168,8 +173,8 @@ public class MainActivity extends Activity {
                         if (repetition < stage.repetitions) {
                             repetition++;
                             phaseIsContraction = true;
-                            secondsLeft = stage.contractionSeconds;
-                            stageDuration = stage.contractionSeconds;
+                            secondsLeft = Math.max(1, stage.contractionSeconds);
+                            stageDuration = secondsLeft;
                             speak("انقباض ملایم");
                             vibrate(1);
                             updateStageText();
@@ -281,7 +286,7 @@ public class MainActivity extends Activity {
     private GradientDrawable gradient(int radius) {
         GradientDrawable d = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{PURPLE, Color.rgb(70, 30, 135)});
+                new int[]{PURPLE, Color.rgb(91, 55, 151)});
         d.setCornerRadius(dp(radius));
         return d;
     }
@@ -301,7 +306,7 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
 
-        TextView header = makeText("✦   " + title, 21, WHITE);
+        TextView header = makeText("✦   " + title, 21, Color.WHITE);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(17), dp(12), dp(17));
@@ -322,6 +327,7 @@ public class MainActivity extends Activity {
         c.setOrientation(LinearLayout.VERTICAL);
         c.setPadding(dp(13), dp(13), dp(13), dp(13));
         c.setBackground(shape(CARD, 20));
+        c.setElevation(dp(2));
 
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(-1, -2);
@@ -339,7 +345,7 @@ public class MainActivity extends Activity {
     private void addButton(String title, Runnable action) {
         Button b = new Button(this);
         b.setText(title);
-        b.setTextColor(WHITE);
+        b.setTextColor(Color.WHITE);
         b.setTextSize(15);
         b.setAllCaps(false);
         b.setBackground(gradient(16));
@@ -354,7 +360,7 @@ public class MainActivity extends Activity {
     private void addCardButton(LinearLayout p, String title, Runnable action) {
         Button b = new Button(this);
         b.setText(title);
-        b.setTextColor(WHITE);
+        b.setTextColor(Color.WHITE);
         b.setTextSize(14);
         b.setAllCaps(false);
         b.setBackground(shape(PURPLE, 14));
@@ -452,9 +458,9 @@ public class MainActivity extends Activity {
 
         LinearLayout hero = makeCard();
         hero.setBackground(gradient(24));
-        addText(hero, "سلام، خوش آمدید ✨", 24, WHITE);
-        addText(hero, "سلامت و آرامش با تمرین روزانه", 15, MUTED);
-        addText(hero, "برنامه انتخابی: " + gender, 15, WHITE);
+        addText(hero, "سلام، خوش آمدید ✨", 24, Color.WHITE);
+        addText(hero, "سلامت و آرامش با تمرین روزانه", 15, Color.rgb(245, 238, 255));
+        addText(hero, "برنامه انتخابی: " + gender, 15, Color.WHITE);
 
         LinearLayout progress = makeCard();
         addText(progress, "پیشرفت کلی شما", 18, WHITE);
@@ -490,7 +496,7 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(title + "  ·  " + (isSessionDone(selectedWeek, selectedDay, session)
                 ? "تکمیل‌شده" : "شروع"));
-        b.setTextColor(WHITE);
+        b.setTextColor(Color.WHITE);
         b.setAllCaps(false);
         b.setBackground(shape(PURPLE, 14));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
@@ -665,7 +671,7 @@ public class MainActivity extends Activity {
 
         String sessionTitle = "morning".equals(selectedSession) ? "صبح"
                 : ("noon".equals(selectedSession) ? "ظهر" : "شب");
-        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, WHITE);
+        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.WHITE);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
@@ -720,7 +726,7 @@ public class MainActivity extends Activity {
         startButton.setText(currentStage == 0
                 ? "▶ شروع مرحله اول با اجازه من"
                 : "▶ شروع مرحله بعد با اجازه من");
-        startButton.setTextColor(WHITE);
+        startButton.setTextColor(Color.WHITE);
         startButton.setTextSize(15);
         startButton.setAllCaps(false);
         startButton.setBackground(gradient(16));
@@ -729,7 +735,7 @@ public class MainActivity extends Activity {
 
         Button pauseButton = new Button(this);
         pauseButton.setText("⏸ توقف تمرین");
-        pauseButton.setTextColor(WHITE);
+        pauseButton.setTextColor(Color.WHITE);
         pauseButton.setAllCaps(false);
         pauseButton.setBackground(shape(CARD, 16));
         controls.addView(pauseButton, new LinearLayout.LayoutParams(-1, -2));
@@ -737,7 +743,7 @@ public class MainActivity extends Activity {
 
         Button homeButton = new Button(this);
         homeButton.setText("بازگشت به خانه");
-        homeButton.setTextColor(WHITE);
+        homeButton.setTextColor(Color.WHITE);
         homeButton.setAllCaps(false);
         homeButton.setBackground(shape(CARD, 16));
         controls.addView(homeButton, new LinearLayout.LayoutParams(-1, -2));
@@ -794,6 +800,7 @@ public class MainActivity extends Activity {
     }
 
     private void completeStageAndWait() {
+        if (sessionFinished || currentStage < 0 || currentStage >= stages.size()) return;
         pauseStage();
         vibrate(3);
 
@@ -891,7 +898,7 @@ public class MainActivity extends Activity {
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dp(15));
             p.setStrokeCap(Paint.Cap.ROUND);
-            p.setColor(Color.rgb(76, 59, 101));
+            p.setColor(Color.rgb(230, 224, 238));
             canvas.drawCircle(cx, cy, radius, p);
 
             p.setColor(activeColor);
@@ -1007,7 +1014,7 @@ public class MainActivity extends Activity {
 
         Switch morningSwitch = new Switch(this);
         morningSwitch.setText("تمرین صبح");
-        morningSwitch.setTextColor(WHITE);
+        morningSwitch.setTextColor(Color.WHITE);
         morningSwitch.setChecked(morningEnabled);
         c.addView(morningSwitch);
         morningSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1022,7 +1029,7 @@ public class MainActivity extends Activity {
 
         Switch noonSwitch = new Switch(this);
         noonSwitch.setText("تمرین ظهر");
-        noonSwitch.setTextColor(WHITE);
+        noonSwitch.setTextColor(Color.WHITE);
         noonSwitch.setChecked(noonEnabled);
         c.addView(noonSwitch);
         noonSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1037,7 +1044,7 @@ public class MainActivity extends Activity {
 
         Switch nightSwitch = new Switch(this);
         nightSwitch.setText("تمرین شب");
-        nightSwitch.setTextColor(WHITE);
+        nightSwitch.setTextColor(Color.WHITE);
         nightSwitch.setChecked(nightEnabled);
         c.addView(nightSwitch);
         nightSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1056,7 +1063,7 @@ public class MainActivity extends Activity {
 
         Switch soundSwitch = new Switch(this);
         soundSwitch.setText("فعال بودن صدای راهنما");
-        soundSwitch.setTextColor(WHITE);
+        soundSwitch.setTextColor(Color.WHITE);
         soundSwitch.setChecked(soundEnabled);
         c.addView(soundSwitch);
         soundSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1070,7 +1077,7 @@ public class MainActivity extends Activity {
 
         Switch vibrationSwitch = new Switch(this);
         vibrationSwitch.setText("فعال بودن ویبره تمرین");
-        vibrationSwitch.setTextColor(WHITE);
+        vibrationSwitch.setTextColor(Color.WHITE);
         vibrationSwitch.setChecked(vibrationEnabled);
         c.addView(vibrationSwitch);
         vibrationSwitch.setOnCheckedChangeListener((button, checked) -> {
