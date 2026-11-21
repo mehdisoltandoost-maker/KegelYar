@@ -6,6 +6,7 @@ import android.os.Handler;
 import android.os.Vibrator;
 import android.os.VibrationEffect;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Color;
@@ -40,6 +41,9 @@ public class MainActivity extends Activity {
     private Vibrator vibrator;
 
     private boolean ttsReady = false;
+    private boolean ttsInitializing = false;
+    private String pendingSpeech = "";
+    private String ttsStatusMessage = "در حال آماده‌سازی صدای فارسی...";
     private boolean soundEnabled = true;
     private boolean vibrationEnabled = true;
     private boolean running = false;
@@ -216,30 +220,87 @@ public class MainActivity extends Activity {
     }
 
     private void initTTS() {
-        tts = new TextToSpeech(this, status -> {
-            if (status == TextToSpeech.SUCCESS) {
-                int result = tts.setLanguage(Locale.forLanguageTag("fa-IR"));
-                ttsReady = result != TextToSpeech.LANG_MISSING_DATA
-                        && result != TextToSpeech.LANG_NOT_SUPPORTED;
+        ttsInitializing = true;
+        ttsStatusMessage = "در حال آماده‌سازی موتور گفتار...";
+        try {
+            tts = new TextToSpeech(this, status -> {
+                ttsInitializing = false;
+                if (status != TextToSpeech.SUCCESS || tts == null) {
+                    ttsReady = false;
+                    ttsStatusMessage = "موتور تبدیل متن به گفتار گوشی فعال نیست.";
+                    return;
+                }
 
+                int result;
+                try {
+                    result = tts.setLanguage(Locale.forLanguageTag("fa-IR"));
+                    if (result < TextToSpeech.LANG_AVAILABLE) {
+                        result = tts.setLanguage(new Locale("fa"));
+                    }
+                } catch (Exception e) {
+                    result = TextToSpeech.LANG_NOT_SUPPORTED;
+                }
+
+                ttsReady = result >= TextToSpeech.LANG_AVAILABLE;
                 if (ttsReady) {
-                    tts.setSpeechRate(0.85f);
+                    ttsStatusMessage = "صدای فارسی آماده است.";
+                    try { tts.setSpeechRate(0.82f); } catch (Exception ignored) { }
                     try {
                         Set<Voice> voices = tts.getVoices();
                         if (voices != null) {
                             for (Voice voice : voices) {
-                                String n = voice.getName().toLowerCase(Locale.ROOT);
-                                if (n.contains("fa") &&
-                                    (n.contains("female") || n.contains("woman"))) {
+                                String name = voice.getName().toLowerCase(Locale.ROOT);
+                                String language = voice.getLocale() == null ? ""
+                                        : voice.getLocale().toLanguageTag().toLowerCase(Locale.ROOT);
+                                if ((language.startsWith("fa") || name.contains("fa")) &&
+                                        (name.contains("female") || name.contains("woman") || name.contains("fem"))) {
                                     tts.setVoice(voice);
                                     break;
                                 }
                             }
                         }
                     } catch (Exception ignored) { }
+                    if (!pendingSpeech.isEmpty()) {
+                        String message = pendingSpeech;
+                        pendingSpeech = "";
+                        speakNow(message);
+                    }
+                } else {
+                    ttsStatusMessage = "صدای فارسی نصب نیست؛ باید اطلاعات گفتار فارسی را روی گوشی نصب کنید.";
                 }
-            }
-        });
+            });
+        } catch (Exception e) {
+            ttsInitializing = false;
+            ttsReady = false;
+            ttsStatusMessage = "راه‌اندازی صدای گوشی ناموفق بود.";
+        }
+    }
+
+    private void speakNow(String s) {
+        if (tts == null || !ttsReady || !soundEnabled) return;
+        try {
+            tts.speak(s, TextToSpeech.QUEUE_FLUSH, null, "kegelyar_voice_" + System.currentTimeMillis());
+        } catch (Exception ignored) { }
+    }
+
+    private void speak(String s) {
+        if (!soundEnabled || s == null || s.trim().isEmpty()) return;
+        if (ttsReady && tts != null) {
+            speakNow(s);
+        } else {
+            pendingSpeech = s;
+        }
+    }
+
+    private void openTtsInstall() {
+        try {
+            Intent intent = new Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this,
+                    "از تنظیمات گوشی وارد بخش تبدیل متن به گفتار شوید و صدای فارسی را نصب کنید.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     // الگوهای لرزش: ۱ انقباض، ۲ رهایی، ۳ پایان مرحله، ۴ پایان جلسه
@@ -346,9 +407,11 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(title);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(15);
+        b.setTextSize(17);
         b.setAllCaps(false);
-        b.setBackground(gradient(16));
+        b.setMinHeight(dp(62));
+        b.setPadding(dp(18), dp(12), dp(18), dp(12));
+        b.setBackground(gradient(24));
 
         LinearLayout.LayoutParams lp =
                 new LinearLayout.LayoutParams(-1, -2);
@@ -361,9 +424,11 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(title);
         b.setTextColor(Color.WHITE);
-        b.setTextSize(14);
+        b.setTextSize(16);
         b.setAllCaps(false);
-        b.setBackground(shape(PURPLE, 14));
+        b.setMinHeight(dp(56));
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
+        b.setBackground(shape(PURPLE, 22));
         p.addView(b, new LinearLayout.LayoutParams(-1, -2));
         b.setOnClickListener(v -> action.run());
     }
@@ -497,8 +562,11 @@ public class MainActivity extends Activity {
         b.setText(title + "  ·  " + (isSessionDone(selectedWeek, selectedDay, session)
                 ? "تکمیل‌شده" : "شروع"));
         b.setTextColor(Color.WHITE);
+        b.setTextSize(16);
+        b.setMinHeight(dp(58));
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
         b.setAllCaps(false);
-        b.setBackground(shape(PURPLE, 14));
+        b.setBackground(shape(PURPLE, 22));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
         lp.setMargins(0, dp(4), 0, dp(4));
         parent.addView(b, lp);
@@ -671,7 +739,7 @@ public class MainActivity extends Activity {
 
         String sessionTitle = "morning".equals(selectedSession) ? "صبح"
                 : ("noon".equals(selectedSession) ? "ظهر" : "شب");
-        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.WHITE);
+        TextView header = makeText("تمرین " + sessionTitle + "  |  روز " + selectedDay, 20, Color.WHITE);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
@@ -707,7 +775,7 @@ public class MainActivity extends Activity {
         circleTimer = new CircleTimer();
         circleTimer.setValue(secondsLeft, stageDuration);
         LinearLayout.LayoutParams timerParams = new LinearLayout.LayoutParams(
-                dp(270), dp(270));
+                dp(292), dp(292));
         timerParams.gravity = Gravity.CENTER;
         timerParams.topMargin = dp(12);
         timerParams.bottomMargin = dp(12);
@@ -727,25 +795,31 @@ public class MainActivity extends Activity {
                 ? "▶ شروع مرحله اول با اجازه من"
                 : "▶ شروع مرحله بعد با اجازه من");
         startButton.setTextColor(Color.WHITE);
-        startButton.setTextSize(15);
+        startButton.setTextSize(19);
+        startButton.setMinHeight(dp(70));
+        startButton.setPadding(dp(18), dp(12), dp(18), dp(12));
         startButton.setAllCaps(false);
-        startButton.setBackground(gradient(16));
+        startButton.setBackground(gradient(28));
         controls.addView(startButton, new LinearLayout.LayoutParams(-1, -2));
         startButton.setOnClickListener(v -> startStage());
 
         Button pauseButton = new Button(this);
         pauseButton.setText("⏸ توقف تمرین");
-        pauseButton.setTextColor(Color.WHITE);
+        pauseButton.setTextColor(WHITE);
+        pauseButton.setTextSize(16);
+        pauseButton.setMinHeight(dp(58));
         pauseButton.setAllCaps(false);
-        pauseButton.setBackground(shape(CARD, 16));
+        pauseButton.setBackground(shape(CARD, 24));
         controls.addView(pauseButton, new LinearLayout.LayoutParams(-1, -2));
         pauseButton.setOnClickListener(v -> pauseStage());
 
         Button homeButton = new Button(this);
         homeButton.setText("بازگشت به خانه");
-        homeButton.setTextColor(Color.WHITE);
+        homeButton.setTextColor(WHITE);
+        homeButton.setTextSize(16);
+        homeButton.setMinHeight(dp(54));
         homeButton.setAllCaps(false);
-        homeButton.setBackground(shape(CARD, 16));
+        homeButton.setBackground(shape(CARD, 24));
         controls.addView(homeButton, new LinearLayout.LayoutParams(-1, -2));
         homeButton.setOnClickListener(v -> {
             pauseStage();
@@ -1014,7 +1088,7 @@ public class MainActivity extends Activity {
 
         Switch morningSwitch = new Switch(this);
         morningSwitch.setText("تمرین صبح");
-        morningSwitch.setTextColor(Color.WHITE);
+        morningSwitch.setTextColor(WHITE);
         morningSwitch.setChecked(morningEnabled);
         c.addView(morningSwitch);
         morningSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1029,7 +1103,7 @@ public class MainActivity extends Activity {
 
         Switch noonSwitch = new Switch(this);
         noonSwitch.setText("تمرین ظهر");
-        noonSwitch.setTextColor(Color.WHITE);
+        noonSwitch.setTextColor(WHITE);
         noonSwitch.setChecked(noonEnabled);
         c.addView(noonSwitch);
         noonSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1044,7 +1118,7 @@ public class MainActivity extends Activity {
 
         Switch nightSwitch = new Switch(this);
         nightSwitch.setText("تمرین شب");
-        nightSwitch.setTextColor(Color.WHITE);
+        nightSwitch.setTextColor(WHITE);
         nightSwitch.setChecked(nightEnabled);
         c.addView(nightSwitch);
         nightSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1063,13 +1137,13 @@ public class MainActivity extends Activity {
 
         Switch soundSwitch = new Switch(this);
         soundSwitch.setText("فعال بودن صدای راهنما");
-        soundSwitch.setTextColor(Color.WHITE);
+        soundSwitch.setTextColor(WHITE);
         soundSwitch.setChecked(soundEnabled);
         c.addView(soundSwitch);
         soundSwitch.setOnCheckedChangeListener((button, checked) -> {
             soundEnabled = checked;
             prefs.edit().putBoolean("sound", checked).apply();
-            if (!checked && tts != null) tts.stop();
+            if (!checked) { pendingSpeech = ""; if (tts != null) tts.stop(); }
         });
 
         View separator = new View(this);
@@ -1077,7 +1151,7 @@ public class MainActivity extends Activity {
 
         Switch vibrationSwitch = new Switch(this);
         vibrationSwitch.setText("فعال بودن ویبره تمرین");
-        vibrationSwitch.setTextColor(Color.WHITE);
+        vibrationSwitch.setTextColor(WHITE);
         vibrationSwitch.setChecked(vibrationEnabled);
         c.addView(vibrationSwitch);
         vibrationSwitch.setOnCheckedChangeListener((button, checked) -> {
@@ -1087,20 +1161,22 @@ public class MainActivity extends Activity {
             else if (vibrator != null) vibrator.cancel();
         });
 
-        addCardButton(c, "آزمایش صدای راهنما", () -> {
-            speak("سلام. به برنامه کگل‌یار خوش آمدید.");
-            if (!ttsReady) {
-                Toast.makeText(this,
-                        "صدای فارسی روی موتور گفتار گوشی در دسترس نیست.",
-                        Toast.LENGTH_LONG).show();
+        addCardButton(c, "▶ آزمایش صدای فارسی", () -> {
+            if (ttsReady) {
+                speak("سلام. به کگل‌یار خوش آمدید. حالا آرام نفس بکشید.");
+                Toast.makeText(this, "صدای فارسی فعال است.", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, ttsStatusMessage, Toast.LENGTH_LONG).show();
             }
         });
 
+        addCardButton(c, "نصب یا بررسی صدای فارسی گوشی", () -> openTtsInstall());
         addCardButton(c, "آزمایش ویبره", () -> vibrate(3));
 
-        addText(c, "صدای زنانه به صداهای فارسی نصب‌شده روی گوشی وابسته است.",
+        addText(c, "وضعیت صدا: " + ttsStatusMessage, 13, ttsReady ? GREEN : PINK);
+        addText(c, "اگر صدای فارسی نصب نباشد، از گزینه نصب بالا استفاده کنید؛ سپس برنامه را دوباره باز کنید.",
                 13, MUTED);
-        addText(c, "برای دریافت لرزش، ویبره گوشی نیز باید از تنظیمات دستگاه روشن باشد.",
+        addText(c, "صدای زنانه فقط در صورت وجود در موتور گفتار گوشی انتخاب می‌شود.",
                 13, MUTED);
         addButton("بازگشت", () -> showHome());
     }
