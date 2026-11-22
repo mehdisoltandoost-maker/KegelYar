@@ -40,13 +40,15 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
 
-    private final int BG = Color.rgb(246, 243, 251);
+    private final int BG = Color.rgb(247, 243, 253);
+    private final int TRAINING_BG = Color.rgb(239, 230, 250);
     private final int CARD = Color.rgb(255, 255, 255);
-    private final int PURPLE = Color.rgb(119, 82, 170);
-    private final int PINK = Color.rgb(205, 128, 174);
-    private final int WHITE = Color.rgb(52, 43, 66);
-    private final int MUTED = Color.rgb(119, 109, 135);
+    private final int PURPLE = Color.rgb(126, 76, 190);
+    private final int PINK = Color.rgb(194, 112, 177);
+    private final int WHITE = Color.rgb(55, 43, 72);
+    private final int MUTED = Color.rgb(119, 105, 139);
     private final int GREEN = Color.rgb(72, 145, 125);
+    private final int HEADER_GOLD = Color.rgb(255, 231, 174);
 
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription;
@@ -59,6 +61,7 @@ public class MainActivity extends Activity {
 
     private boolean ttsReady = false;
     private String pendingSpeech = "";
+    private String pendingCue = "";
     private boolean soundEnabled = true;
     private boolean vibrationEnabled = true;
     private boolean running = false;
@@ -414,28 +417,34 @@ public class MainActivity extends Activity {
                     return;
                 }
                 try {
-                    int result = tts.setLanguage(Locale.forLanguageTag("fa-IR"));
-                    if (result < TextToSpeech.LANG_AVAILABLE) {
-                        result = tts.setLanguage(new Locale("fa"));
-                    }
-                    ttsReady = result >= TextToSpeech.LANG_AVAILABLE;
-                    if (!ttsReady) return;
+                    // آماده بودن موتور گفتار را مستقل از نصب صدای فارسی بررسی می‌کنیم؛
+                    // حتی اگر صدای فارسی نصب نباشد، فرمان‌های انگلیسی HOLD و RELAX باید پخش شوند.
+                    ttsReady = true;
                     tts.setSpeechRate(0.85f);
-                    try {
-                        Set<Voice> voices = tts.getVoices();
-                        if (voices != null) {
-                            for (Voice voice : voices) {
-                                String n = voice.getName().toLowerCase(Locale.ROOT);
-                                String lang = voice.getLocale() == null ? "" :
-                                        voice.getLocale().toLanguageTag().toLowerCase(Locale.ROOT);
-                                if ((lang.startsWith("fa") || n.contains("fa")) &&
-                                        (n.contains("female") || n.contains("woman") || n.contains("fem"))) {
-                                    tts.setVoice(voice);
-                                    break;
+                    int faResult = tts.setLanguage(Locale.forLanguageTag("fa-IR"));
+                    if (faResult < TextToSpeech.LANG_AVAILABLE) {
+                        faResult = tts.setLanguage(new Locale("fa"));
+                    }
+                    if (faResult >= TextToSpeech.LANG_AVAILABLE) {
+                        try {
+                            Set<Voice> voices = tts.getVoices();
+                            if (voices != null) {
+                                for (Voice voice : voices) {
+                                    String n = voice.getName().toLowerCase(Locale.ROOT);
+                                    String lang = voice.getLocale() == null ? "" :
+                                            voice.getLocale().toLanguageTag().toLowerCase(Locale.ROOT);
+                                    if ((lang.startsWith("fa") || n.contains("fa")) &&
+                                            (n.contains("female") || n.contains("woman") || n.contains("fem"))) {
+                                        tts.setVoice(voice);
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                    } catch (Exception ignored) { }
+                        } catch (Exception ignored) { }
+                    } else {
+                        // صدای فارسی در دسترس نیست؛ زبان انگلیسی را برای فرمان‌های تمرین فعال نگه می‌داریم.
+                        tts.setLanguage(Locale.US);
+                    }
                     tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
                         @Override public void onStart(String utteranceId) { }
                         @Override public void onDone(String utteranceId) {
@@ -449,13 +458,18 @@ public class MainActivity extends Activity {
                             }
                         }
                     });
-                    if (!pendingSpeech.isEmpty() && soundEnabled) {
+                    if (soundEnabled && !pendingCue.isEmpty()) {
+                        String cue = pendingCue;
+                        pendingCue = "";
+                        speakCue("HOLD".equals(cue));
+                    } else if (!pendingSpeech.isEmpty() && soundEnabled) {
                         String message = pendingSpeech;
                         pendingSpeech = "";
                         speakNow(message);
                     }
                 } catch (Exception ignored) {
-                    ttsReady = false;
+                    // خطای انتخاب زبان نباید پخش فرمان‌های انگلیسی را از کار بیندازد.
+                    ttsReady = true;
                 }
             });
         } catch (Exception e) {
@@ -500,26 +514,36 @@ public class MainActivity extends Activity {
         else pendingSpeech = s;
     }
 
-    // فرمان‌های کوتاه تمرین با تلفظ انگلیسی: Hold و Relax.
+    // فرمان‌های تمرین؛ اگر موتور گفتار هنوز آماده نشده باشد، فرمان نگه داشته می‌شود.
     private void speakCue(boolean contraction) {
-        if (!soundEnabled || tts == null || !ttsReady) return;
+        if (!soundEnabled) return;
+        String cue = contraction ? "HOLD" : "RELAX";
+        if (tts == null || !ttsReady) {
+            pendingCue = cue;
+            return;
+        }
         try {
-            int result = tts.setLanguage(Locale.US);
-            if (result == TextToSpeech.LANG_MISSING_DATA ||
-                    result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                result = tts.setLanguage(Locale.UK);
+            int languageResult = tts.setLanguage(Locale.US);
+            if (languageResult < TextToSpeech.LANG_AVAILABLE) {
+                languageResult = tts.setLanguage(Locale.UK);
             }
-            if (result == TextToSpeech.LANG_MISSING_DATA ||
-                    result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                restorePersianTts();
-                return;
+            if (languageResult < TextToSpeech.LANG_AVAILABLE) {
+                // حتی اگر بسته زبان انگلیسی جداگانه نصب نباشد، از صدای پیش‌فرض موتور استفاده می‌کنیم.
+                tts.setLanguage(Locale.getDefault());
             }
-            tts.setSpeechRate(0.82f);
-            int spoken = tts.speak(contraction ? "Hold" : "Relax",
+            tts.setSpeechRate(0.90f);
+            int result = tts.speak(cue.equals("HOLD") ? "Hold" : "Relax",
                     TextToSpeech.QUEUE_FLUSH, null, "kegelyar_english_cue");
-            if (spoken == TextToSpeech.ERROR) restorePersianTts();
+            if (result == TextToSpeech.ERROR) {
+                // تلاش نهایی با صدای پیش‌فرض موتور گفتار گوشی
+                tts.speak(cue.equals("HOLD") ? "Hold" : "Relax",
+                        TextToSpeech.QUEUE_FLUSH, null);
+            }
         } catch (Exception ignored) {
-            restorePersianTts();
+            try {
+                tts.speak(cue.equals("HOLD") ? "Hold" : "Relax",
+                        TextToSpeech.QUEUE_FLUSH, null);
+            } catch (Exception ignoredAgain) { }
         }
     }
 
@@ -578,7 +602,8 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(BG);
 
-        TextView header = makeText("✦   " + title, 21, WHITE);
+        int headerTextColor = "کگل‌یار".equals(title) ? HEADER_GOLD : Color.WHITE;
+        TextView header = makeText("✦   " + title, 21, headerTextColor);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(17), dp(12), dp(17));
@@ -1082,11 +1107,11 @@ public class MainActivity extends Activity {
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.setBackgroundColor(BG);
+        root.setBackgroundColor(TRAINING_BG);
 
         String sessionTitle = "morning".equals(selectedSession) ? "صبح"
                 : ("noon".equals(selectedSession) ? "ظهر" : "شب");
-        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, WHITE);
+        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.WHITE);
         header.setTypeface(null, Typeface.BOLD);
         header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
@@ -1141,10 +1166,10 @@ public class MainActivity extends Activity {
         playPauseButton = new Button(this);
         playPauseButton.setText("▶");
         playPauseButton.setTextSize(25);
-        playPauseButton.setTextColor(WHITE);
+        playPauseButton.setTextColor(PURPLE);
         playPauseButton.setContentDescription("Play");
         playPauseButton.setAllCaps(false);
-        playPauseButton.setBackground(shape(PURPLE, 18));
+        playPauseButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
         LinearLayout.LayoutParams controlLp = new LinearLayout.LayoutParams(0, dp(58), 1f);
         controlLp.setMargins(dp(5), 0, dp(5), 0);
         controls.addView(playPauseButton, controlLp);
@@ -1153,10 +1178,10 @@ public class MainActivity extends Activity {
         Button nextButton = new Button(this);
         nextButton.setText("⏭");
         nextButton.setTextSize(25);
-        nextButton.setTextColor(WHITE);
+        nextButton.setTextColor(PURPLE);
         nextButton.setContentDescription("Next stage");
         nextButton.setAllCaps(false);
-        nextButton.setBackground(shape(PURPLE, 18));
+        nextButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
         controls.addView(nextButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
         nextButton.setOnClickListener(v -> {
             if (running) pauseStage();
@@ -1170,10 +1195,10 @@ public class MainActivity extends Activity {
         Button pauseButton = new Button(this);
         pauseButton.setText("⏸");
         pauseButton.setTextSize(25);
-        pauseButton.setTextColor(WHITE);
+        pauseButton.setTextColor(PURPLE);
         pauseButton.setContentDescription("Pause");
         pauseButton.setAllCaps(false);
-        pauseButton.setBackground(shape(PURPLE, 18));
+        pauseButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
         controls.addView(pauseButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
         pauseButton.setOnClickListener(v -> pauseStage());
 
@@ -1545,6 +1570,7 @@ public class MainActivity extends Activity {
             prefs.edit().putBoolean("sound", checked).apply();
             if (!checked) {
                 pendingSpeech = "";
+                pendingCue = "";
                 if (tts != null) tts.stop();
             }
         });
