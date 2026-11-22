@@ -656,13 +656,42 @@ public class MainActivity extends Activity {
         return prefs.getBoolean(sessionKey(week, day, session), false);
     }
 
+    private int currentSessionMask() {
+        int mask = 0;
+        if (morningEnabled) mask |= 1;
+        if (noonEnabled) mask |= 2;
+        if (nightEnabled) mask |= 4;
+        return mask;
+    }
+
+    private String requiredSessionsKey(int week, int day) {
+        return dayKey(week, day) + "_required_sessions";
+    }
+
+    private int getRequiredSessionMask(int week, int day) {
+        String key = requiredSessionsKey(week, day);
+        if (prefs.contains(key)) return prefs.getInt(key, 0);
+        // سازگاری با سوابق قدیمی: روزهای ثبت‌شده قبلی را کامل نگه می‌داریم.
+        if (prefs.getBoolean(dayKey(week, day), false)) return 0;
+        return currentSessionMask();
+    }
+
+    private void freezeRequiredSessions(int week, int day) {
+        String key = requiredSessionsKey(week, day);
+        if (!prefs.contains(key)) {
+            int mask = currentSessionMask();
+            if (mask == 0) mask = 1;
+            prefs.edit().putInt(key, mask).apply();
+        }
+    }
+
     private boolean isDayDone(int week, int day) {
-        // تکمیل روز فقط بر اساس نوبت‌هایی محاسبه می‌شود که اکنون فعال‌اند.
-        // کلید قدیمی روز صرفاً در مهاجرت یک‌باره به کلیدهای نوبت تبدیل می‌شود.
-        if (enabledSessionCount() == 0) return false;
-        if (morningEnabled && !isSessionDone(week, day, "morning")) return false;
-        if (noonEnabled && !isSessionDone(week, day, "noon")) return false;
-        if (nightEnabled && !isSessionDone(week, day, "night")) return false;
+        if (prefs.getBoolean(dayKey(week, day), false)) return true;
+        int required = getRequiredSessionMask(week, day);
+        if (required == 0) return false;
+        if ((required & 1) != 0 && !isSessionDone(week, day, "morning")) return false;
+        if ((required & 2) != 0 && !isSessionDone(week, day, "noon")) return false;
+        if ((required & 4) != 0 && !isSessionDone(week, day, "night")) return false;
         return true;
     }
 
@@ -833,6 +862,7 @@ public class MainActivity extends Activity {
                 Toast.makeText(this, "این نوبت قبلاً تکمیل شده است.", Toast.LENGTH_SHORT).show();
                 return;
             }
+            freezeRequiredSessions(selectedWeek, selectedDay);
             showTraining();
         });
     }
@@ -916,6 +946,7 @@ public class MainActivity extends Activity {
             }
             selectedDay = day;
             selectedSession = session;
+            freezeRequiredSessions(selectedWeek, selectedDay);
             showTraining();
         });
     }
@@ -938,24 +969,50 @@ public class MainActivity extends Activity {
             return;
         }
 
-        int warmup = 30 + sessionOffset * 10;
+        int warmup;
+        int hold;
+        int rest;
+        int reps;
+        int quick;
+        int cooldown;
+
+        if (sessionOffset == 0) {
+            // صبح: شروع آرام، تمرکز بر کنترل و تکرارهای کوتاه‌تر
+            warmup = 45;
+            hold = Math.min(7, 3 + (selectedWeek - 1) / 2);
+            rest = hold + 3;
+            reps = selectedWeek < 4 ? 4 : 5;
+            quick = selectedWeek < 4 ? 3 : 4;
+            cooldown = 45;
+        } else if (sessionOffset == 1) {
+            // ظهر: جلسه میانی با تکرارهای بیشتر و استراحت متعادل
+            warmup = 30;
+            hold = Math.min(8, 4 + (selectedWeek - 1) / 2);
+            rest = hold + 2;
+            reps = selectedWeek < 4 ? 5 : 6;
+            quick = selectedWeek < 4 ? 4 : 5;
+            cooldown = 35;
+        } else {
+            // شب: تمرکز بر رهاسازی طولانی‌تر و شدت کمتر
+            warmup = 60;
+            hold = Math.min(6, 3 + (selectedWeek - 1) / 3);
+            rest = hold + 4;
+            reps = selectedWeek < 4 ? 3 : 4;
+            quick = 3;
+            cooldown = 60;
+        }
+
         stages.add(new TrainingStage("آماده‌سازی و تنفس",
                 "در وضعیت راحت قرار بگیرید و آرام نفس بکشید.", warmup, false));
-
-        int hold = Math.min(8, 3 + (selectedWeek - 1) / 2 + (sessionOffset == 1 ? 1 : 0));
-        int rest = hold + (sessionOffset == 2 ? 3 : 2);
-        int reps = (selectedWeek < 4 ? 4 : 5) + (sessionOffset == 2 ? 1 : 0);
 
         stages.add(new TrainingStage("انقباض و رهاسازی کنترل‌شده",
                 "با راهنمای صوتی، انقباض ملایم و سپس رهاسازی کامل را تکرار کنید. نفس را حبس نکنید.",
                 reps, hold, rest));
 
-        int quick = (selectedWeek < 4 ? 3 : 5) + sessionOffset;
         stages.add(new TrainingStage("انقباض‌های کوتاه",
                 "انقباض‌های کوتاه و ملایم را با رهاسازی کامل بین آن‌ها انجام دهید.",
-                quick, 2, 4));
+                quick, 2, sessionOffset == 2 ? 5 : 4));
 
-        int cooldown = 35 + sessionOffset * 10;
         stages.add(new TrainingStage("آرام‌سازی پایانی",
                 "عضلات کف لگن را کاملاً آزاد کنید و آرام نفس بکشید.", cooldown, false));
     }
@@ -1157,6 +1214,7 @@ public class MainActivity extends Activity {
         pauseStage();
         vibrate(4);
 
+        freezeRequiredSessions(selectedWeek, selectedDay);
         prefs.edit()
                 .putBoolean(sessionKey(selectedWeek, selectedDay, selectedSession), true)
                 .apply();
@@ -1361,11 +1419,44 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void addTrainingTimeControl(LinearLayout card, String label, String session, String defaultTime) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView name = makeText(label, 14, WHITE);
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+        String saved = prefs.getString("training_time_" + session, defaultTime);
+        Button time = new Button(this);
+        time.setText(saved);
+        time.setAllCaps(false);
+        time.setTextColor(WHITE);
+        time.setBackground(shape(PURPLE, 12));
+        row.addView(time, new LinearLayout.LayoutParams(dp(105), -2));
+        card.addView(row);
+        time.setOnClickListener(v -> {
+            String[] parts = prefs.getString("training_time_" + session, defaultTime).split(":");
+            int h = 8, m = 0;
+            try { h = Integer.parseInt(parts[0]); m = Integer.parseInt(parts[1]); } catch (Exception ignored) { }
+            new TimePickerDialog(this, (picker, hour, minute) -> {
+                String value = String.format(Locale.US, "%02d:%02d", hour, minute);
+                prefs.edit().putString("training_time_" + session, value).apply();
+                time.setText(value);
+            }, h, m, true).show();
+        });
+    }
+
     private void showSettings() {
         setup("تنظیمات صدا و ویبره");
         LinearLayout c = makeCard();
-        addText(c, "یادآوری زمان تمرین", 18, PINK);
-        addText(c, "برای هر نوبت ساعت جداگانه انتخاب کنید. اعلان روزانه در همان ساعت نمایش داده می‌شود.", 13, MUTED);
+        addText(c, "ساعت برنامه‌ریزی‌شده تمرین", 18, PINK);
+        addText(c, "این ساعت فقط زمان پیشنهادی انجام تمرین را ثبت می‌کند و مستقل از ساعت اعلان است.", 13, MUTED);
+        addTrainingTimeControl(c, "زمان تمرین صبح", "morning", "07:30");
+        addTrainingTimeControl(c, "زمان تمرین ظهر", "noon", "13:00");
+        addTrainingTimeControl(c, "زمان تمرین شب", "night", "20:30");
+        View trainingSeparator = new View(this);
+        c.addView(trainingSeparator, new LinearLayout.LayoutParams(-1, dp(12)));
+        addText(c, "ساعت اعلان یادآوری", 18, PINK);
+        addText(c, "اعلان‌ها زمان جداگانه دارند و می‌توانند با ساعت تمرین متفاوت باشند.", 13, MUTED);
         addReminderControl(c, "یادآوری صبح", "morning", "08:00");
         addReminderControl(c, "یادآوری ظهر", "noon", "13:00");
         addReminderControl(c, "یادآوری شب", "night", "20:00");
