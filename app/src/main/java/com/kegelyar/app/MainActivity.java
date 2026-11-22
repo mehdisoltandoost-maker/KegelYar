@@ -40,18 +40,18 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
 
-    private final int BG = Color.rgb(248, 245, 239);
-    private final int TRAINING_BG = Color.rgb(240, 246, 241);
-    private final int TRAINING_ACCENT = Color.rgb(111, 151, 130);
-    private final int SETTINGS_ACCENT = Color.rgb(111, 145, 125);
-    private final int SETTINGS_SOFT = Color.rgb(231, 239, 231);
+    private final int BG = Color.rgb(245, 248, 246);
+    private final int TRAINING_BG = Color.rgb(245, 248, 246);
+    private final int TRAINING_ACCENT = Color.rgb(117, 170, 165);
+    private final int SETTINGS_ACCENT = Color.rgb(117, 170, 165);
+    private final int SETTINGS_SOFT = Color.rgb(232, 242, 240);
     private final int CARD = Color.rgb(255, 255, 255);
-    private final int PURPLE = Color.rgb(169, 111, 99);
-    private final int PINK = Color.rgb(190, 132, 126);
+    private final int PURPLE = Color.rgb(117, 170, 165);
+    private final int PINK = Color.rgb(117, 170, 165);
     private final int WHITE = Color.rgb(65, 66, 60);
     private final int MUTED = Color.rgb(125, 125, 115);
     private final int GREEN = Color.rgb(104, 145, 119);
-    private final int HEADER_GOLD = Color.rgb(255, 247, 228);
+    private final int HEADER_GOLD = Color.rgb(255, 255, 255);
 
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription;
@@ -585,7 +585,7 @@ public class MainActivity extends Activity {
     private GradientDrawable gradient(int radius) {
         GradientDrawable d = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{PURPLE, Color.rgb(135, 91, 82)});
+                new int[]{PURPLE, Color.rgb(86, 140, 135)});
         d.setCornerRadius(dp(radius));
         return d;
     }
@@ -827,14 +827,14 @@ public class MainActivity extends Activity {
         tiles.setColumnCount(2);
         tiles.setUseDefaultMargins(false);
         content.addView(tiles, new LinearLayout.LayoutParams(-1, -2));
-        addHomeTile(tiles, "تمرین امروز", () -> showTodaySessions(), Color.rgb(239, 226, 218));
-        addHomeTile(tiles, "برنامه ۱۲ هفته‌ای", () -> showWeeks(), Color.rgb(244, 229, 226));
-        addHomeTile(tiles, "پیشرفت من", () -> showProgress(), Color.rgb(229, 238, 228));
-        addHomeTile(tiles, "ورزش‌های مکمل", () -> showExercises(), Color.rgb(232, 241, 234));
-        addHomeTile(tiles, "آموزش و ایمنی", () -> showGuide(), Color.rgb(247, 239, 224));
-        addHomeTile(tiles, "تنظیمات و یادآوری", () -> showSettings(), Color.rgb(231, 239, 231));
-        addHomeTile(tiles, "پشتیبان سوابق", () -> shareBackup(), Color.rgb(231, 239, 238));
-        addHomeTile(tiles, "تغییر گروه تمرینی", () -> showGender(), Color.rgb(244, 230, 225));
+        addHomeTile(tiles, "تمرین امروز", () -> showTodaySessions(), Color.rgb(225, 239, 237));
+        addHomeTile(tiles, "برنامه ۱۲ هفته‌ای", () -> showWeeks(), Color.rgb(232, 243, 241));
+        addHomeTile(tiles, "پیشرفت من", () -> showProgress(), Color.rgb(225, 239, 237));
+        addHomeTile(tiles, "ورزش‌های مکمل", () -> showExercises(), Color.rgb(235, 244, 242));
+        addHomeTile(tiles, "آموزش و ایمنی", () -> showGuide(), Color.rgb(240, 246, 244));
+        addHomeTile(tiles, "تنظیمات و یادآوری", () -> showSettings(), Color.rgb(225, 239, 237));
+        addHomeTile(tiles, "پشتیبان سوابق", () -> shareBackup(), Color.rgb(232, 243, 241));
+        addHomeTile(tiles, "تغییر گروه تمرینی", () -> showGender(), Color.rgb(235, 244, 242));
         if (getTotalCompleted() >= 84) {
             addButton("شروع دوره جدید با حفظ سوابق", () -> startNewCourse());
         }
@@ -1116,7 +1116,7 @@ public class MainActivity extends Activity {
                 : ("noon".equals(selectedSession) ? "ظهر" : "شب");
         TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.rgb(48, 86, 78));
         header.setTypeface(null, Typeface.BOLD);
-        header.setBackgroundColor(Color.rgb(231, 239, 231));
+        header.setBackgroundColor(Color.rgb(225, 239, 237));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
