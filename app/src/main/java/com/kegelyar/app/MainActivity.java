@@ -40,13 +40,13 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
 
-    private final int BG = Color.rgb(248, 245, 253);
+    private final int BG = Color.rgb(246, 243, 251);
     private final int CARD = Color.rgb(255, 255, 255);
-    private final int PURPLE = Color.rgb(143, 94, 205);
-    private final int PINK = Color.rgb(222, 126, 184);
-    private final int WHITE = Color.rgb(55, 43, 72);
-    private final int MUTED = Color.rgb(125, 111, 145);
-    private final int GREEN = Color.rgb(65, 160, 125);
+    private final int PURPLE = Color.rgb(119, 82, 170);
+    private final int PINK = Color.rgb(205, 128, 174);
+    private final int WHITE = Color.rgb(52, 43, 66);
+    private final int MUTED = Color.rgb(119, 109, 135);
+    private final int GREEN = Color.rgb(72, 145, 125);
 
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription;
@@ -505,11 +505,17 @@ public class MainActivity extends Activity {
         if (!soundEnabled || tts == null || !ttsReady) return;
         try {
             int result = tts.setLanguage(Locale.US);
-            if (result < TextToSpeech.LANG_AVAILABLE) {
-                tts.setLanguage(Locale.forLanguageTag("en-US"));
+            if (result == TextToSpeech.LANG_MISSING_DATA ||
+                    result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                result = tts.setLanguage(Locale.UK);
             }
-            tts.setSpeechRate(0.90f);
-            int spoken = tts.speak(contraction ? "HOLD" : "RELAX",
+            if (result == TextToSpeech.LANG_MISSING_DATA ||
+                    result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                restorePersianTts();
+                return;
+            }
+            tts.setSpeechRate(0.82f);
+            int spoken = tts.speak(contraction ? "Hold" : "Relax",
                     TextToSpeech.QUEUE_FLUSH, null, "kegelyar_english_cue");
             if (spoken == TextToSpeech.ERROR) restorePersianTts();
         } catch (Exception ignored) {
@@ -793,35 +799,35 @@ public class MainActivity extends Activity {
         tiles.setColumnCount(2);
         tiles.setUseDefaultMargins(false);
         content.addView(tiles, new LinearLayout.LayoutParams(-1, -2));
-        addHomeTile(tiles, "▶", "تمرین امروز", () -> showTodaySessions());
-        addHomeTile(tiles, "▦", "برنامه ۱۲ هفته‌ای", () -> showWeeks());
-        addHomeTile(tiles, "◉", "پیشرفت من", () -> showProgress());
-        addHomeTile(tiles, "♡", "ورزش‌های مکمل", () -> showExercises());
-        addHomeTile(tiles, "📖", "آموزش و ایمنی", () -> showGuide());
-        addHomeTile(tiles, "⚙", "تنظیمات و یادآوری", () -> showSettings());
-        addHomeTile(tiles, "⇧", "پشتیبان سوابق", () -> shareBackup());
-        addHomeTile(tiles, "♙", "تغییر گروه تمرینی", () -> showGender());
+        addHomeTile(tiles, "تمرین امروز", () -> showTodaySessions(), Color.rgb(238, 229, 249));
+        addHomeTile(tiles, "برنامه ۱۲ هفته‌ای", () -> showWeeks(), Color.rgb(248, 232, 242));
+        addHomeTile(tiles, "پیشرفت من", () -> showProgress(), Color.rgb(231, 239, 250));
+        addHomeTile(tiles, "ورزش‌های مکمل", () -> showExercises(), Color.rgb(232, 244, 239));
+        addHomeTile(tiles, "آموزش و ایمنی", () -> showGuide(), Color.rgb(249, 239, 225));
+        addHomeTile(tiles, "تنظیمات و یادآوری", () -> showSettings(), Color.rgb(237, 234, 248));
+        addHomeTile(tiles, "پشتیبان سوابق", () -> shareBackup(), Color.rgb(231, 242, 246));
+        addHomeTile(tiles, "تغییر گروه تمرینی", () -> showGender(), Color.rgb(247, 233, 237));
         if (getTotalCompleted() >= 84) {
             addButton("شروع دوره جدید با حفظ سوابق", () -> startNewCourse());
         }
     }
 
-    private void addHomeTile(GridLayout grid, String icon, String title, Runnable action) {
+    private void addHomeTile(GridLayout grid, String title, Runnable action, int tileColor) {
         LinearLayout tile = new LinearLayout(this);
         tile.setOrientation(LinearLayout.VERTICAL);
         tile.setGravity(Gravity.CENTER);
-        tile.setPadding(dp(8), dp(15), dp(8), dp(15));
-        tile.setBackground(shape(WHITE, 18));
-        TextView symbol = makeText(icon, 30, PURPLE);
-        TextView caption = makeText(title, 14, WHITE);
+        tile.setPadding(dp(10), dp(12), dp(10), dp(12));
+        tile.setBackground(shape(tileColor, 20));
+        TextView caption = makeText(title, 16, WHITE);
         caption.setTypeface(null, Typeface.BOLD);
-        tile.addView(symbol);
-        tile.addView(caption);
+        caption.setGravity(Gravity.CENTER);
+        caption.setMaxLines(2);
+        tile.addView(caption, new LinearLayout.LayoutParams(-1, -1));
         GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
         lp.width = 0;
-        lp.height = dp(108);
+        lp.height = dp(112);
         lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
-        lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+        lp.setMargins(dp(5), dp(5), dp(5), dp(5));
         grid.addView(tile, lp);
         tile.setOnClickListener(v -> action.run());
     }
@@ -1138,7 +1144,7 @@ public class MainActivity extends Activity {
         playPauseButton.setTextColor(WHITE);
         playPauseButton.setContentDescription("Play");
         playPauseButton.setAllCaps(false);
-        playPauseButton.setBackground(gradient(18));
+        playPauseButton.setBackground(shape(PURPLE, 18));
         LinearLayout.LayoutParams controlLp = new LinearLayout.LayoutParams(0, dp(58), 1f);
         controlLp.setMargins(dp(5), 0, dp(5), 0);
         controls.addView(playPauseButton, controlLp);
@@ -1167,7 +1173,7 @@ public class MainActivity extends Activity {
         pauseButton.setTextColor(WHITE);
         pauseButton.setContentDescription("Pause");
         pauseButton.setAllCaps(false);
-        pauseButton.setBackground(shape(CARD, 18));
+        pauseButton.setBackground(shape(PURPLE, 18));
         controls.addView(pauseButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
         pauseButton.setOnClickListener(v -> pauseStage());
 
