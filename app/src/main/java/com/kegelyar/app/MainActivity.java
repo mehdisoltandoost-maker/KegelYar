@@ -22,6 +22,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.content.SharedPreferences;
 import android.speech.tts.TextToSpeech;
 import android.speech.tts.Voice;
+import android.speech.tts.UtteranceProgressListener;
 import android.view.Gravity;
 import android.Manifest;
 import android.content.pm.PackageManager;
@@ -177,7 +178,7 @@ public class MainActivity extends Activity {
                         phaseIsContraction = false;
                         secondsLeft = stage.releaseSeconds;
                         stageDuration = stage.releaseSeconds;
-                        speak("رها کنید");
+                        speakCue(false);
                         vibrate(2);
                         updateStageText();
                         updateTimer();
@@ -190,7 +191,7 @@ public class MainActivity extends Activity {
                             phaseIsContraction = true;
                             secondsLeft = stage.contractionSeconds;
                             stageDuration = stage.contractionSeconds;
-                            speak("انقباض ملایم");
+                            speakCue(true);
                             vibrate(1);
                             updateStageText();
                             updateTimer();
@@ -261,6 +262,7 @@ public class MainActivity extends Activity {
         prefs.edit().putString("gender", g).apply();
         base.edit().putString("gender", g).apply();
         loadPreferences();
+        migrateLegacyDayProgress();
     }
 
     private void loadPreferences() {
@@ -272,6 +274,36 @@ public class MainActivity extends Activity {
         nightEnabled = prefs.getBoolean("session_night", false);
         courseNumber = Math.max(1, prefs.getInt("course_number", 1));
         assessmentDone = prefs.getBoolean("assessment_done", false);
+    }
+
+    /*
+     * مهاجرت یک‌باره سوابق نسخه‌های قدیمی که فقط کلید تکمیل روز داشتند.
+     * اگر برای یک روز حتی یک کلید نوبت وجود داشته باشد، آن روز متعلق به
+     * ساختار جدید است و نباید نوبت‌های تازه‌فعال‌شده به‌اشتباه کامل شوند.
+     */
+    private void migrateLegacyDayProgress() {
+        if (prefs == null || prefs.getBoolean("session_progress_migrated_v1", false)) return;
+
+        SharedPreferences.Editor editor = prefs.edit();
+        for (int course = 1; course <= courseNumber; course++) {
+            String prefix = course <= 1 ? "" : "course_" + course + "_";
+            for (int week = 1; week <= 12; week++) {
+                for (int day = 1; day <= 7; day++) {
+                    String base = prefix + "week_" + week + "_day_" + day;
+                    if (!prefs.getBoolean(base, false)) continue;
+
+                    boolean hasSessionRecord = prefs.contains(base + "_session_morning")
+                            || prefs.contains(base + "_session_noon")
+                            || prefs.contains(base + "_session_night");
+                    if (hasSessionRecord) continue;
+
+                    if (morningEnabled) editor.putBoolean(base + "_session_morning", true);
+                    if (noonEnabled) editor.putBoolean(base + "_session_noon", true);
+                    if (nightEnabled) editor.putBoolean(base + "_session_night", true);
+                }
+            }
+        }
+        editor.putBoolean("session_progress_migrated_v1", true).apply();
     }
 
     private String coursePrefix() {
@@ -404,6 +436,19 @@ public class MainActivity extends Activity {
                             }
                         }
                     } catch (Exception ignored) { }
+                    tts.setOnUtteranceProgressListener(new UtteranceProgressListener() {
+                        @Override public void onStart(String utteranceId) { }
+                        @Override public void onDone(String utteranceId) {
+                            if ("kegelyar_english_cue".equals(utteranceId)) {
+                                handler.post(() -> restorePersianTts());
+                            }
+                        }
+                        @Override public void onError(String utteranceId) {
+                            if ("kegelyar_english_cue".equals(utteranceId)) {
+                                handler.post(() -> restorePersianTts());
+                            }
+                        }
+                    });
                     if (!pendingSpeech.isEmpty() && soundEnabled) {
                         String message = pendingSpeech;
                         pendingSpeech = "";
@@ -453,6 +498,44 @@ public class MainActivity extends Activity {
         if (!soundEnabled || s == null || s.trim().isEmpty()) return;
         if (ttsReady && tts != null) speakNow(s);
         else pendingSpeech = s;
+    }
+
+    // فرمان‌های کوتاه تمرین با تلفظ انگلیسی: Hold و Relax.
+    private void speakCue(boolean contraction) {
+        if (!soundEnabled || tts == null || !ttsReady) return;
+        try {
+            int result = tts.setLanguage(Locale.US);
+            if (result < TextToSpeech.LANG_AVAILABLE) {
+                tts.setLanguage(Locale.forLanguageTag("en-US"));
+            }
+            tts.setSpeechRate(0.90f);
+            int spoken = tts.speak(contraction ? "Hold" : "Relax",
+                    TextToSpeech.QUEUE_FLUSH, null, "kegelyar_english_cue");
+            if (spoken == TextToSpeech.ERROR) restorePersianTts();
+        } catch (Exception ignored) {
+            restorePersianTts();
+        }
+    }
+
+    private void restorePersianTts() {
+        if (tts == null || !ttsReady) return;
+        try {
+            tts.setLanguage(Locale.forLanguageTag("fa-IR"));
+            tts.setSpeechRate(0.85f);
+            Set<Voice> voices = tts.getVoices();
+            if (voices != null) {
+                for (Voice voice : voices) {
+                    String name = voice.getName().toLowerCase(Locale.ROOT);
+                    String language = voice.getLocale() == null ? "" :
+                            voice.getLocale().toLanguageTag().toLowerCase(Locale.ROOT);
+                    if ((language.startsWith("fa") || name.contains("fa")) &&
+                            (name.contains("female") || name.contains("woman") || name.contains("fem"))) {
+                        tts.setVoice(voice);
+                        break;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
     }
 
     private int dp(float v) {
@@ -574,8 +657,8 @@ public class MainActivity extends Activity {
     }
 
     private boolean isDayDone(int week, int day) {
-        // روزهای تکمیل‌شده در نسخه قبلی نیز حفظ می‌شوند.
-        if (prefs.getBoolean(dayKey(week, day), false)) return true;
+        // تکمیل روز فقط بر اساس نوبت‌هایی محاسبه می‌شود که اکنون فعال‌اند.
+        // کلید قدیمی روز صرفاً در مهاجرت یک‌باره به کلیدهای نوبت تبدیل می‌شود.
         if (enabledSessionCount() == 0) return false;
         if (morningEnabled && !isSessionDone(week, day, "morning")) return false;
         if (noonEnabled && !isSessionDone(week, day, "noon")) return false;
@@ -1026,7 +1109,7 @@ public class MainActivity extends Activity {
         TrainingStage stage = stages.get(currentStage);
 
         if (stage.mode == 1) {
-            speak(phaseIsContraction ? "انقباض ملایم" : "رها کنید");
+            speakCue(phaseIsContraction);
             vibrate(phaseIsContraction ? 1 : 2);
         } else {
             speak(stage.title);
