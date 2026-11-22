@@ -41,7 +41,10 @@ import java.util.Map;
 public class MainActivity extends Activity {
 
     private final int BG = Color.rgb(247, 243, 253);
-    private final int TRAINING_BG = Color.rgb(239, 230, 250);
+    private final int TRAINING_BG = Color.rgb(239, 247, 244);
+    private final int TRAINING_ACCENT = Color.rgb(91, 151, 137);
+    private final int SETTINGS_ACCENT = Color.rgb(67, 137, 132);
+    private final int SETTINGS_SOFT = Color.rgb(224, 240, 236);
     private final int CARD = Color.rgb(255, 255, 255);
     private final int PURPLE = Color.rgb(126, 76, 190);
     private final int PINK = Color.rgb(194, 112, 177);
@@ -605,7 +608,8 @@ public class MainActivity extends Activity {
         int headerTextColor = "کگل‌یار".equals(title) ? HEADER_GOLD : Color.WHITE;
         TextView header = makeText("✦   " + title, 21, headerTextColor);
         header.setTypeface(null, Typeface.BOLD);
-        header.setBackground(gradient(0));
+        if (title.startsWith("تنظیمات")) header.setBackgroundColor(SETTINGS_ACCENT);
+        else header.setBackground(gradient(0));
         header.setPadding(dp(12), dp(17), dp(12), dp(17));
         root.addView(header);
 
@@ -808,7 +812,6 @@ public class MainActivity extends Activity {
         setup("کگل‌یار");
         LinearLayout hero = makeCard();
         addText(hero, "سلام، خوش آمدید ✨", 23, WHITE);
-        addText(hero, "سلامت و آرامش با تمرین روزانه", 14, MUTED);
         addText(hero, "برنامه انتخابی: " + gender, 14, WHITE);
 
         LinearLayout progress = makeCard();
@@ -1111,9 +1114,9 @@ public class MainActivity extends Activity {
 
         String sessionTitle = "morning".equals(selectedSession) ? "صبح"
                 : ("noon".equals(selectedSession) ? "ظهر" : "شب");
-        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.WHITE);
+        TextView header = makeText("✦   تمرین " + sessionTitle + " · روز " + selectedDay, 20, Color.rgb(48, 86, 78));
         header.setTypeface(null, Typeface.BOLD);
-        header.setBackground(gradient(0));
+        header.setBackgroundColor(Color.rgb(218, 237, 230));
         header.setPadding(dp(12), dp(15), dp(12), dp(15));
         root.addView(header, new LinearLayout.LayoutParams(-1, -2));
 
@@ -1166,10 +1169,10 @@ public class MainActivity extends Activity {
         playPauseButton = new Button(this);
         playPauseButton.setText("▶");
         playPauseButton.setTextSize(25);
-        playPauseButton.setTextColor(PURPLE);
+        playPauseButton.setTextColor(TRAINING_ACCENT);
         playPauseButton.setContentDescription("Play");
         playPauseButton.setAllCaps(false);
-        playPauseButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
+        playPauseButton.setBackground(shape(Color.rgb(215, 235, 228), 18));
         LinearLayout.LayoutParams controlLp = new LinearLayout.LayoutParams(0, dp(58), 1f);
         controlLp.setMargins(dp(5), 0, dp(5), 0);
         controls.addView(playPauseButton, controlLp);
@@ -1178,10 +1181,10 @@ public class MainActivity extends Activity {
         Button nextButton = new Button(this);
         nextButton.setText("⏭");
         nextButton.setTextSize(25);
-        nextButton.setTextColor(PURPLE);
+        nextButton.setTextColor(TRAINING_ACCENT);
         nextButton.setContentDescription("Next stage");
         nextButton.setAllCaps(false);
-        nextButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
+        nextButton.setBackground(shape(Color.rgb(215, 235, 228), 18));
         controls.addView(nextButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
         nextButton.setOnClickListener(v -> {
             if (running) pauseStage();
@@ -1195,10 +1198,10 @@ public class MainActivity extends Activity {
         Button pauseButton = new Button(this);
         pauseButton.setText("⏸");
         pauseButton.setTextSize(25);
-        pauseButton.setTextColor(PURPLE);
+        pauseButton.setTextColor(TRAINING_ACCENT);
         pauseButton.setContentDescription("Pause");
         pauseButton.setAllCaps(false);
-        pauseButton.setBackground(shape(Color.rgb(224, 210, 244), 18));
+        pauseButton.setBackground(shape(Color.rgb(215, 235, 228), 18));
         controls.addView(pauseButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
         pauseButton.setOnClickListener(v -> pauseStage());
 
@@ -1359,7 +1362,7 @@ public class MainActivity extends Activity {
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dp(15));
             p.setStrokeCap(Paint.Cap.ROUND);
-            p.setColor(Color.rgb(226, 218, 238));
+            p.setColor(Color.rgb(215, 231, 225));
             canvas.drawCircle(cx, cy, radius, p);
 
             p.setColor(activeColor);
@@ -1469,7 +1472,7 @@ public class MainActivity extends Activity {
         time.setText(saved);
         time.setAllCaps(false);
         time.setTextColor(WHITE);
-        time.setBackground(shape(PURPLE, 12));
+        time.setBackground(shape(SETTINGS_ACCENT, 12));
         row.addView(time, new LinearLayout.LayoutParams(dp(105), -2));
         card.addView(row);
         time.setOnClickListener(v -> {
@@ -1498,17 +1501,30 @@ public class MainActivity extends Activity {
         });
     }
 
+    private void addSettingsButton(LinearLayout parent, String title, Runnable action) {
+        Button b = new Button(this);
+        b.setText(title);
+        b.setTextColor(Color.WHITE);
+        b.setTextSize(14);
+        b.setAllCaps(false);
+        b.setBackground(shape(SETTINGS_ACCENT, 14));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -2);
+        lp.setMargins(0, dp(6), 0, dp(6));
+        parent.addView(b, lp);
+        b.setOnClickListener(v -> action.run());
+    }
+
     private void showSettings() {
         setup("تنظیمات و یادآوری");
         LinearLayout c = makeCard();
-        addText(c, "ساعت اعلان یادآوری", 18, PINK);
+        addText(c, "ساعت اعلان یادآوری", 18, SETTINGS_ACCENT);
         addText(c, "ساعت هر اعلان را جداگانه انتخاب کنید.", 13, MUTED);
         addReminderControl(c, "یادآوری صبح", "morning", "08:00");
         addReminderControl(c, "یادآوری ظهر", "noon", "13:00");
         addReminderControl(c, "یادآوری شب", "night", "20:00");
         View reminderSeparator = new View(this);
         c.addView(reminderSeparator, new LinearLayout.LayoutParams(-1, dp(12)));
-        addText(c, "انتخاب نوبت‌های روزانه", 18, PINK);
+        addText(c, "انتخاب نوبت‌های روزانه", 18, SETTINGS_ACCENT);
         addText(c, "می‌توانید فقط یک نوبت، دو نوبت یا هر سه نوبت را فعال کنید.", 13, MUTED);
 
         Switch morningSwitch = new Switch(this);
@@ -1558,7 +1574,7 @@ public class MainActivity extends Activity {
 
         View sessionSeparator = new View(this);
         c.addView(sessionSeparator, new LinearLayout.LayoutParams(-1, dp(12)));
-        addText(c, "صدا و لرزش", 18, PINK);
+        addText(c, "صدا و لرزش", 18, SETTINGS_ACCENT);
 
         Switch soundSwitch = new Switch(this);
         soundSwitch.setText("فعال بودن صدای راهنما");
@@ -1590,7 +1606,7 @@ public class MainActivity extends Activity {
             else if (vibrator != null) vibrator.cancel();
         });
 
-        addCardButton(c, "آزمایش صدای راهنما", () -> {
+        addSettingsButton(c, "آزمایش صدای راهنما", () -> {
             speak("سلام. به برنامه کگل‌یار خوش آمدید.");
             if (!ttsReady) {
                 Toast.makeText(this,
@@ -1599,13 +1615,13 @@ public class MainActivity extends Activity {
             }
         });
 
-        addCardButton(c, "آزمایش ویبره", () -> vibrate(3));
+        addSettingsButton(c, "آزمایش ویبره", () -> vibrate(3));
 
         addText(c, "صدای زنانه به صداهای فارسی نصب‌شده روی گوشی وابسته است.",
                 13, MUTED);
         addText(c, "برای دریافت لرزش، ویبره گوشی نیز باید از تنظیمات دستگاه روشن باشد.",
                 13, MUTED);
-        addButton("بازگشت", () -> showHome());
+        addSettingsButton(c, "بازگشت", () -> showHome());
     }
 
     @Override
