@@ -40,13 +40,13 @@ import java.util.Map;
 
 public class MainActivity extends Activity {
 
-    private final int BG = Color.rgb(24, 14, 48);
-    private final int CARD = Color.rgb(53, 34, 83);
-    private final int PURPLE = Color.rgb(145, 65, 235);
-    private final int PINK = Color.rgb(230, 105, 205);
-    private final int WHITE = Color.WHITE;
-    private final int MUTED = Color.rgb(205, 190, 225);
-    private final int GREEN = Color.rgb(75, 210, 155);
+    private final int BG = Color.rgb(248, 245, 253);
+    private final int CARD = Color.rgb(255, 255, 255);
+    private final int PURPLE = Color.rgb(143, 94, 205);
+    private final int PINK = Color.rgb(222, 126, 184);
+    private final int WHITE = Color.rgb(55, 43, 72);
+    private final int MUTED = Color.rgb(125, 111, 145);
+    private final int GREEN = Color.rgb(65, 160, 125);
 
     private LinearLayout root, content;
     private TextView stepTitle, stepDescription;
@@ -509,7 +509,7 @@ public class MainActivity extends Activity {
                 tts.setLanguage(Locale.forLanguageTag("en-US"));
             }
             tts.setSpeechRate(0.90f);
-            int spoken = tts.speak(contraction ? "Hold" : "Relax",
+            int spoken = tts.speak(contraction ? "HOLD" : "RELAX",
                     TextToSpeech.QUEUE_FLUSH, null, "kegelyar_english_cue");
             if (spoken == TextToSpeech.ERROR) restorePersianTts();
         } catch (Exception ignored) {
@@ -552,7 +552,7 @@ public class MainActivity extends Activity {
     private GradientDrawable gradient(int radius) {
         GradientDrawable d = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                new int[]{PURPLE, Color.rgb(70, 30, 135)});
+                new int[]{PURPLE, Color.rgb(91, 55, 151)});
         d.setCornerRadius(dp(radius));
         return d;
     }
@@ -610,7 +610,7 @@ public class MainActivity extends Activity {
     private void addButton(String title, Runnable action) {
         Button b = new Button(this);
         b.setText(title);
-        b.setTextColor(WHITE);
+        b.setTextColor(Color.WHITE);
         b.setTextSize(15);
         b.setAllCaps(false);
         b.setBackground(gradient(16));
@@ -625,7 +625,7 @@ public class MainActivity extends Activity {
     private void addCardButton(LinearLayout p, String title, Runnable action) {
         Button b = new Button(this);
         b.setText(title);
-        b.setTextColor(WHITE);
+        b.setTextColor(Color.WHITE);
         b.setTextSize(14);
         b.setAllCaps(false);
         b.setBackground(shape(PURPLE, 14));
@@ -686,6 +686,8 @@ public class MainActivity extends Activity {
     }
 
     private boolean isDayDone(int week, int day) {
+        // روز هفتم در تمام هفته‌ها روز استراحت است و تمرین ندارد.
+        if (day == 7) return true;
         if (prefs.getBoolean(dayKey(week, day), false)) return true;
         int required = getRequiredSessionMask(week, day);
         if (required == 0) return false;
@@ -773,47 +775,72 @@ public class MainActivity extends Activity {
             selectedDay = getFirstIncompleteDay(selectedWeek);
         }
         setup("کگل‌یار");
-
         LinearLayout hero = makeCard();
-        hero.setBackground(gradient(24));
-        addText(hero, "سلام، خوش آمدید ✨", 24, WHITE);
-        addText(hero, "سلامت و آرامش با تمرین روزانه", 15, MUTED);
-        addText(hero, "برنامه انتخابی: " + gender, 15, WHITE);
+        addText(hero, "سلام، خوش آمدید ✨", 23, WHITE);
+        addText(hero, "سلامت و آرامش با تمرین روزانه", 14, MUTED);
+        addText(hero, "برنامه انتخابی: " + gender, 14, WHITE);
 
         LinearLayout progress = makeCard();
-        addText(progress, "پیشرفت کلی شما", 18, WHITE);
-        addText(progress, "دوره " + courseNumber + "  ·  " + getTotalCompleted() + " از ۸۴ روز", 21, PINK);
-
-        ProgressBar bar = new ProgressBar(this, null,
-                android.R.attr.progressBarStyleHorizontal);
+        addText(progress, "پیشرفت کلی شما", 17, WHITE);
+        addText(progress, "دوره " + courseNumber + "  ·  " + getTotalCompleted() + " از ۸۴ روز", 20, PINK);
+        ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(84);
         bar.setProgress(getTotalCompleted());
-        progress.addView(bar, new LinearLayout.LayoutParams(-1, dp(12)));
+        progress.addView(bar, new LinearLayout.LayoutParams(-1, dp(10)));
 
-        LinearLayout daily = makeCard();
-        addText(daily, "تمرین‌های امروز", 19, WHITE);
-        addText(daily, "هر نوبت را جداگانه شروع کنید؛ برنامه هر نوبت متفاوت است.", 13, MUTED);
-        String stars = "صبح " + (morningEnabled ? "★" : "☆") + "     ظهر " +
-                (noonEnabled ? "★" : "☆") + "     شب " + (nightEnabled ? "★" : "☆");
-        addText(daily, stars, 15, PINK);
-        if (morningEnabled) addSessionLaunch(daily, "☀ تمرین صبح", "morning");
-        if (noonEnabled) addSessionLaunch(daily, "◉ تمرین ظهر", "noon");
-        if (nightEnabled) addSessionLaunch(daily, "☾ تمرین شب", "night");
-        if (enabledSessionCount() == 0) {
-            addText(daily, "برای شروع، دست‌کم یک نوبت را در تنظیمات فعال کنید.", 14, PINK);
-        }
-        addButton("تنظیم نوبت‌های صبح، ظهر و شب", () -> showSettings());
-
-        addButton("▦ برنامه ۱۲ هفته‌ای", () -> showWeeks());
-        addButton("◉ پیشرفت من", () -> showProgress());
+        addText(content, "منوی اصلی", 18, WHITE);
+        GridLayout tiles = new GridLayout(this);
+        tiles.setColumnCount(2);
+        tiles.setUseDefaultMargins(false);
+        content.addView(tiles, new LinearLayout.LayoutParams(-1, -2));
+        addHomeTile(tiles, "▶", "تمرین امروز", () -> showTodaySessions());
+        addHomeTile(tiles, "▦", "برنامه ۱۲ هفته‌ای", () -> showWeeks());
+        addHomeTile(tiles, "◉", "پیشرفت من", () -> showProgress());
+        addHomeTile(tiles, "♡", "ورزش‌های مکمل", () -> showExercises());
+        addHomeTile(tiles, "📖", "آموزش و ایمنی", () -> showGuide());
+        addHomeTile(tiles, "⚙", "تنظیمات و یادآوری", () -> showSettings());
+        addHomeTile(tiles, "⇧", "پشتیبان سوابق", () -> shareBackup());
+        addHomeTile(tiles, "♙", "تغییر گروه تمرینی", () -> showGender());
         if (getTotalCompleted() >= 84) {
             addButton("شروع دوره جدید با حفظ سوابق", () -> startNewCourse());
         }
-        addButton("♡ ورزش‌های مکمل", () -> showExercises());
-        addButton("📖 آموزش و نکات ایمنی", () -> showGuide());
-        addButton("⚙ تنظیمات و یادآوری‌ها", () -> showSettings());
-        addButton("پشتیبان‌گیری از سوابق", () -> shareBackup());
-        addButton("تغییر گروه تمرینی", () -> showGender());
+    }
+
+    private void addHomeTile(GridLayout grid, String icon, String title, Runnable action) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setPadding(dp(8), dp(15), dp(8), dp(15));
+        tile.setBackground(shape(WHITE, 18));
+        TextView symbol = makeText(icon, 30, PURPLE);
+        TextView caption = makeText(title, 14, WHITE);
+        caption.setTypeface(null, Typeface.BOLD);
+        tile.addView(symbol);
+        tile.addView(caption);
+        GridLayout.LayoutParams lp = new GridLayout.LayoutParams();
+        lp.width = 0;
+        lp.height = dp(108);
+        lp.columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f);
+        lp.setMargins(dp(4), dp(4), dp(4), dp(4));
+        grid.addView(tile, lp);
+        tile.setOnClickListener(v -> action.run());
+    }
+
+    private void showTodaySessions() {
+        setup("تمرین امروز");
+        LinearLayout c = makeCard();
+        if (selectedDay == 7) {
+            addText(c, "امروز روز استراحت هفتگی است.", 19, GREEN);
+            addText(c, "تمرینی برای امروز در نظر گرفته نشده؛ استراحت کنید.", 14, MUTED);
+        } else {
+            addText(c, "نوبت موردنظر را انتخاب کنید", 18, WHITE);
+            if (morningEnabled) addSessionLaunch(c, "☀ تمرین صبح", "morning");
+            if (noonEnabled) addSessionLaunch(c, "◉ تمرین ظهر", "noon");
+            if (nightEnabled) addSessionLaunch(c, "☾ تمرین شب", "night");
+            if (enabledSessionCount() == 0) addText(c, "ابتدا یک نوبت را در تنظیمات فعال کنید.", 14, MUTED);
+        }
+        addButton("تنظیم نوبت‌ها", () -> showSettings());
+        addButton("بازگشت به خانه", () -> showHome());
     }
 
     private void startNewCourse() {
@@ -921,9 +948,12 @@ public class MainActivity extends Activity {
 
             boolean done = isDayDone(selectedWeek, day);
             addText(c, "روز " + day + (done ? "   ✓" : "   ○"), 18, WHITE);
-            addText(c, done ? "جلسه تکمیل شده" : "جلسه تمرینی", 14, MUTED);
+            addText(c, day == 7 ? "روز استراحت؛ تمرینی برنامه‌ریزی نشده است"
+                    : (done ? "جلسه تکمیل شده" : "جلسه تمرینی"), 14, MUTED);
 
-            if (!done && day == getFirstIncompleteDay(selectedWeek)) {
+            if (day == 7) {
+                addText(c, "روز استراحت هفتگی؛ نیازی به تمرین نیست.", 13, GREEN);
+            } else if (!done && day == getFirstIncompleteDay(selectedWeek)) {
                 addText(c, "نوبت‌های قابل انتخاب:", 13, MUTED);
                 if (morningEnabled) addDaySessionButton(c, day, "☀ صبح", "morning");
                 if (noonEnabled) addDaySessionButton(c, day, "◉ ظهر", "noon");
@@ -1097,31 +1127,49 @@ public class MainActivity extends Activity {
         center.addView(instructionText, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout controls = new LinearLayout(this);
-        controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setGravity(Gravity.CENTER);
         controls.setPadding(dp(14), dp(4), dp(14), dp(12));
         root.addView(controls, new LinearLayout.LayoutParams(-1, -2));
 
         playPauseButton = new Button(this);
-        playPauseButton.setText("▶ شروع");
+        playPauseButton.setText("▶");
+        playPauseButton.setTextSize(25);
         playPauseButton.setTextColor(WHITE);
-        playPauseButton.setTextSize(16);
+        playPauseButton.setContentDescription("Play");
         playPauseButton.setAllCaps(false);
-        playPauseButton.setBackground(gradient(16));
-        controls.addView(playPauseButton, new LinearLayout.LayoutParams(-1, -2));
-        playPauseButton.setOnClickListener(v -> {
-            if (running) pauseStage(); else startStage();
+        playPauseButton.setBackground(gradient(18));
+        LinearLayout.LayoutParams controlLp = new LinearLayout.LayoutParams(0, dp(58), 1f);
+        controlLp.setMargins(dp(5), 0, dp(5), 0);
+        controls.addView(playPauseButton, controlLp);
+        playPauseButton.setOnClickListener(v -> startStage());
+
+        Button nextButton = new Button(this);
+        nextButton.setText("⏭");
+        nextButton.setTextSize(25);
+        nextButton.setTextColor(WHITE);
+        nextButton.setContentDescription("Next stage");
+        nextButton.setAllCaps(false);
+        nextButton.setBackground(shape(PURPLE, 18));
+        controls.addView(nextButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
+        nextButton.setOnClickListener(v -> {
+            if (running) pauseStage();
+            if (currentStage < stages.size() - 1) {
+                currentStage++;
+                prepareStage();
+                Toast.makeText(this, "برای شروع مرحله بعد Play را بزنید.", Toast.LENGTH_SHORT).show();
+            } else finishTraining();
         });
 
-        Button homeButton = new Button(this);
-        homeButton.setText("بازگشت به خانه");
-        homeButton.setTextColor(WHITE);
-        homeButton.setAllCaps(false);
-        homeButton.setBackground(shape(CARD, 16));
-        controls.addView(homeButton, new LinearLayout.LayoutParams(-1, -2));
-        homeButton.setOnClickListener(v -> {
-            pauseStage();
-            showHome();
-        });
+        Button pauseButton = new Button(this);
+        pauseButton.setText("⏸");
+        pauseButton.setTextSize(25);
+        pauseButton.setTextColor(WHITE);
+        pauseButton.setContentDescription("Pause");
+        pauseButton.setAllCaps(false);
+        pauseButton.setBackground(shape(CARD, 18));
+        controls.addView(pauseButton, new LinearLayout.LayoutParams(0, dp(58), 1f));
+        pauseButton.setOnClickListener(v -> pauseStage());
 
         setContentView(root);
         updateStageText();
@@ -1140,10 +1188,10 @@ public class MainActivity extends Activity {
         if (stage.mode == 1) {
             if (phaseIsContraction) {
                 if (circleTimer != null) circleTimer.setContraction(true);
-                if (instructionText != null) instructionText.setText("انقباض ملایم · " + repetition + " از " + stage.repetitions);
+                if (instructionText != null) instructionText.setText("HOLD  ·  " + repetition + " / " + stage.repetitions);
             } else {
                 if (circleTimer != null) circleTimer.setContraction(false);
-                if (instructionText != null) instructionText.setText("رها کنید و عضلات را کاملاً آزاد بگذارید.");
+                if (instructionText != null) instructionText.setText("RELAX");
             }
         } else {
             if (circleTimer != null) circleTimer.setContraction(false);
@@ -1162,7 +1210,7 @@ public class MainActivity extends Activity {
         if (sessionFinished || currentStage >= stages.size()) return;
 
         running = true;
-        if (playPauseButton != null) playPauseButton.setText("⏸ مکث");
+        if (playPauseButton != null) playPauseButton.setText("▶");
         TrainingStage stage = stages.get(currentStage);
 
         if (stage.mode == 1) {
@@ -1195,7 +1243,7 @@ public class MainActivity extends Activity {
 
     private void pauseStage() {
         running = false;
-        if (playPauseButton != null) playPauseButton.setText("▶ ادامه");
+        if (playPauseButton != null) playPauseButton.setText("▶");
         handler.removeCallbacks(timerRunnable);
         if (tts != null) tts.stop();
         if (vibrator != null) vibrator.cancel();
@@ -1280,7 +1328,7 @@ public class MainActivity extends Activity {
             p.setStyle(Paint.Style.STROKE);
             p.setStrokeWidth(dp(15));
             p.setStrokeCap(Paint.Cap.ROUND);
-            p.setColor(Color.rgb(76, 59, 101));
+            p.setColor(Color.rgb(226, 218, 238));
             canvas.drawCircle(cx, cy, radius, p);
 
             p.setColor(activeColor);
@@ -1419,44 +1467,11 @@ public class MainActivity extends Activity {
         });
     }
 
-    private void addTrainingTimeControl(LinearLayout card, String label, String session, String defaultTime) {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView name = makeText(label, 14, WHITE);
-        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
-        String saved = prefs.getString("training_time_" + session, defaultTime);
-        Button time = new Button(this);
-        time.setText(saved);
-        time.setAllCaps(false);
-        time.setTextColor(WHITE);
-        time.setBackground(shape(PURPLE, 12));
-        row.addView(time, new LinearLayout.LayoutParams(dp(105), -2));
-        card.addView(row);
-        time.setOnClickListener(v -> {
-            String[] parts = prefs.getString("training_time_" + session, defaultTime).split(":");
-            int h = 8, m = 0;
-            try { h = Integer.parseInt(parts[0]); m = Integer.parseInt(parts[1]); } catch (Exception ignored) { }
-            new TimePickerDialog(this, (picker, hour, minute) -> {
-                String value = String.format(Locale.US, "%02d:%02d", hour, minute);
-                prefs.edit().putString("training_time_" + session, value).apply();
-                time.setText(value);
-            }, h, m, true).show();
-        });
-    }
-
     private void showSettings() {
-        setup("تنظیمات صدا و ویبره");
+        setup("تنظیمات و یادآوری");
         LinearLayout c = makeCard();
-        addText(c, "ساعت برنامه‌ریزی‌شده تمرین", 18, PINK);
-        addText(c, "این ساعت فقط زمان پیشنهادی انجام تمرین را ثبت می‌کند و مستقل از ساعت اعلان است.", 13, MUTED);
-        addTrainingTimeControl(c, "زمان تمرین صبح", "morning", "07:30");
-        addTrainingTimeControl(c, "زمان تمرین ظهر", "noon", "13:00");
-        addTrainingTimeControl(c, "زمان تمرین شب", "night", "20:30");
-        View trainingSeparator = new View(this);
-        c.addView(trainingSeparator, new LinearLayout.LayoutParams(-1, dp(12)));
         addText(c, "ساعت اعلان یادآوری", 18, PINK);
-        addText(c, "اعلان‌ها زمان جداگانه دارند و می‌توانند با ساعت تمرین متفاوت باشند.", 13, MUTED);
+        addText(c, "ساعت هر اعلان را جداگانه انتخاب کنید.", 13, MUTED);
         addReminderControl(c, "یادآوری صبح", "morning", "08:00");
         addReminderControl(c, "یادآوری ظهر", "noon", "13:00");
         addReminderControl(c, "یادآوری شب", "night", "20:00");
