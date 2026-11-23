@@ -333,21 +333,38 @@ public class MainActivity extends Activity {
 
     private static void scheduleReminder(Context context, String g, String session,
                                          int hour, int minute) {
+        if (context == null || g == null || session == null) return;
+        if (!("آقایان".equals(g) || "بانوان".equals(g))) return;
+        if (!("morning".equals(session) || "noon".equals(session)
+                || "night".equals(session))) return;
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return;
+
         Intent intent = new Intent(context, ReminderReceiver.class);
         intent.putExtra("gender", g);
         intent.putExtra("session", session);
         int id = reminderId(g, session);
         PendingIntent pi = PendingIntent.getBroadcast(context, id, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
         Calendar when = Calendar.getInstance();
         when.set(Calendar.HOUR_OF_DAY, hour);
         when.set(Calendar.MINUTE, minute);
         when.set(Calendar.SECOND, 0);
         when.set(Calendar.MILLISECOND, 0);
-        if (when.getTimeInMillis() <= System.currentTimeMillis()) when.add(Calendar.DAY_OF_YEAR, 1);
-        AlarmManager alarm = (AlarmManager) context.getSystemService(ALARM_SERVICE);
-        if (alarm != null) alarm.setInexactRepeating(AlarmManager.RTC_WAKEUP,
-                when.getTimeInMillis(), AlarmManager.INTERVAL_DAY, pi);
+        if (when.getTimeInMillis() <= System.currentTimeMillis()) {
+            when.add(Calendar.DAY_OF_YEAR, 1);
+        }
+
+        AlarmManager alarm = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+        if (alarm != null) {
+            if (Build.VERSION.SDK_INT >= 23) {
+                // آلارم روزانه به‌صورت تک‌مرحله‌ای تنظیم می‌شود؛ Receiver پس از اجرا، فردا را ثبت می‌کند.
+                alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                        when.getTimeInMillis(), pi);
+            } else {
+                alarm.set(AlarmManager.RTC_WAKEUP, when.getTimeInMillis(), pi);
+            }
+        }
     }
 
     private static void cancelReminder(Context context, String g, String session) {
@@ -362,14 +379,34 @@ public class MainActivity extends Activity {
 
     public static class ReminderReceiver extends BroadcastReceiver {
         @Override public void onReceive(Context context, Intent intent) {
+            if (intent == null) return;
             String g = intent.getStringExtra("gender");
             String session = intent.getStringExtra("session");
             if (g == null || session == null) return;
+            if (!("آقایان".equals(g) || "بانوان".equals(g))) return;
+            if (!("morning".equals(session) || "noon".equals(session)
+                    || "night".equals(session))) return;
+
+            String profile = "KegelYarData_" + ("آقایان".equals(g) ? "men" : "women");
+            SharedPreferences pref = context.getSharedPreferences(profile, Context.MODE_PRIVATE);
+
+            // قبل از بررسی مجوز اعلان، نوبت فردا را ثبت می‌کنیم تا چرخه با رد مجوز قطع نشود.
+            if (pref.getBoolean("reminder_" + session, false)) {
+                String defaultTime = "morning".equals(session) ? "08:00" :
+                        ("noon".equals(session) ? "13:00" : "20:00");
+                String time = pref.getString("reminder_time_" + session, defaultTime);
+                try {
+                    String[] parts = time.split(":");
+                    int hour = Integer.parseInt(parts[0]);
+                    int minute = Integer.parseInt(parts[1]);
+                    scheduleReminder(context, g, session, hour, minute);
+                } catch (Exception ignored) { }
+            }
+
             if (Build.VERSION.SDK_INT >= 33 &&
                     context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                     != PackageManager.PERMISSION_GRANTED) return;
-            String profile = "KegelYarData_" + ("آقایان".equals(g) ? "men" : "women");
-            SharedPreferences pref = context.getSharedPreferences(profile, MODE_PRIVATE);
+
             String title = "morning".equals(session) ? "تمرین صبح" :
                     ("noon".equals(session) ? "تمرین ظهر" : "تمرین شب");
             Intent open = new Intent(context, MainActivity.class);
@@ -385,28 +422,33 @@ public class MainActivity extends Activity {
                     .setContentTitle("کگل‌یار · " + title)
                     .setContentText("اگر زمان مناسبی است، تمرین امروزتان را شروع کنید.")
                     .setContentIntent(content).setAutoCancel(true).build();
-            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            NotificationManager manager = (NotificationManager)
+                    context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) manager.notify(reminderId(g, session), notification);
         }
     }
 
     public static class BootReceiver extends BroadcastReceiver {
         @Override public void onReceive(Context context, Intent intent) {
+            if (intent != null && intent.getAction() != null
+                    && !Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) return;
+
             String[] genders = {"آقایان", "بانوان"};
             String[] sessions = {"morning", "noon", "night"};
             for (String g : genders) {
                 String profile = "KegelYarData_" + ("آقایان".equals(g) ? "men" : "women");
-                SharedPreferences p = context.getSharedPreferences(profile, MODE_PRIVATE);
+                SharedPreferences p = context.getSharedPreferences(profile, Context.MODE_PRIVATE);
                 for (String session : sessions) {
-                    if (p.getBoolean("reminder_" + session, false)) {
-                        String time = p.getString("reminder_time_" + session,
-                                "morning".equals(session) ? "08:00" : ("noon".equals(session) ? "13:00" : "20:00"));
-                        try {
-                            String[] parts = time.split(":");
-                            scheduleReminder(context, g, session,
-                                    Integer.parseInt(parts[0]), Integer.parseInt(parts[1]));
-                        } catch (Exception ignored) { }
-                    }
+                    if (!p.getBoolean("reminder_" + session, false)) continue;
+                    String defaultTime = "morning".equals(session) ? "08:00" :
+                            ("noon".equals(session) ? "13:00" : "20:00");
+                    String time = p.getString("reminder_time_" + session, defaultTime);
+                    try {
+                        String[] parts = time.split(":");
+                        int hour = Integer.parseInt(parts[0]);
+                        int minute = Integer.parseInt(parts[1]);
+                        scheduleReminder(context, g, session, hour, minute);
+                    } catch (Exception ignored) { }
                 }
             }
         }
